@@ -1,88 +1,100 @@
-# Zongce Android App
+# Zongce · Comprehensive Assessment Materials
 
-An Android app for organizing materials used in student comprehensive assessment. It helps students record awards when they receive them, keep supporting photos, and export a structured ZIP package when the materials are needed for submission.
+## Capture it when you receive it. Export it when you need it.
 
-[中文说明](README.md)
+Zongce is a local-first Android tool for organizing materials used in student comprehensive assessment. It focuses on the everyday workflow around certificates and awards: capture, record, classify, validate, and export a submission-ready package.
 
-## Features
+> Zongce is an independent project. It is not affiliated with or endorsed by any school or education authority. Always verify submission requirements through the official school system and notices.
 
-- Organize personal award records by the five education categories (the “Five Educations”).
-- Take certificate photos with the camera or import supporting images from the system picker.
-- Store award name, award date, award level, grade or ranking, and related metadata.
-- Persist records locally with Room and store photos in app-private storage.
-- Determine the academic year from the award date and warn about academic-year boundary dates.
-- Validate required fields, academic-year membership, and supporting photos before export.
-- Export a ZIP package grouped by education category.
-- Generate image names using the `award_date_award_name_grade.jpg` convention.
-- View, edit, and delete existing records.
+## Install
 
-## Tech Stack
-
-- Kotlin
-- Jetpack Compose and Material 3
-- AndroidX Navigation, Lifecycle, and ViewModel
-- Room and KSP
-- Gradle Kotlin DSL
-
-Current project settings: `minSdk 26`, `targetSdk 35`, Java/Kotlin JVM target 17, and application version `1.0`.
-
-## Project Structure
-
-```text
-app/src/main/java/com/zongce/app/
-├── core/       Academic-year rules, file-name rules, image processing
-├── data/       Room database, award records, and photo storage
-├── export/     Pre-export validation and ZIP generation
-└── ui/         Compose screens and ViewModel
-
-app/src/test/   Unit tests for academic years, file names, and export checks
-```
-
-## Getting Started
-
-### Requirements
-
-- Android Studio with support for Android Gradle Plugin 8.5.2.
-- JDK 17.
-- Android SDK 35.
-- Network access for downloading Gradle dependencies.
-
-### Build a Debug APK
-
-On Windows PowerShell:
+The project is currently in early development. No official APK or app-store release is available yet. Build a debug APK from source:
 
 ```powershell
+git clone https://github.com/l0x0hhh/zongce.git
+cd zongce
 .\gradlew.bat assembleDebug
 ```
 
-The APK will be generated at:
+The APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
+Android 8.0 or later is required. You can also open the repository root in Android Studio, wait for Gradle sync, and run the `app` module.
 
-You can also open the project root in Android Studio and run the `app` module.
+## Get Started
 
-### Run Tests
+1. Open the app and take a certificate photo or import supporting images from the system picker.
+2. Select one of the Five Educations and enter the award name and award date.
+3. Add the award level, grade, or ranking when available on the certificate.
+4. Review, edit, or delete records from the list.
+5. Open the export screen, select the target academic year, and review validation results.
+6. Generate the ZIP package after validation, then review it before submission.
 
-```powershell
-.\gradlew.bat test
-```
+The photo date is not the award date. Use the date shown on the certificate or official supporting document.
 
-The tests primarily cover pure Kotlin rules, including academic-year classification, file-name generation, and pre-export validation. Camera capture, file picking, image importing, and ZIP sharing should still be verified on an Android device or emulator.
+## Features
 
-## Export Rules
-
-The target academic year is determined from the current date. Export is blocked when a record is missing its award name, award date, or supporting photo. Boundary dates receive an additional confirmation warning. The exported ZIP contains folders for the five education categories, and image names combine the award date, award name, and grade. Multiple photos belonging to the same record receive numeric suffixes.
+- Organize award records by the Five Educations.
+- Capture certificates with the camera or import images from the system picker.
+- Store award name, award date, award level, grade, or ranking.
+- Determine the academic year from the award date.
+- Warn about academic-year boundaries and block records outside the target year when required.
+- Validate required fields and supporting photos before export.
+- Export a ZIP package grouped by education category.
+- Generate readable image names using `award_date_award_name_grade.jpg`.
+- Handle image rotation, JPEG conversion, and thumbnail previews.
+- View, edit, and delete existing records.
 
 ## Data and Privacy
 
-The current project uses local storage and does not require a backend service. Award records and supporting photos are stored on the device by default. Export files are written to the app cache directory and handed to the user through Android's file-sharing mechanism. Users should back up important materials and review the exported package before submitting it to a school system.
+- Award records are stored locally with Room.
+- Supporting photos are kept in app-private storage; no backend service is required.
+- Export files are written to the app cache directory and handed to the user through Android file sharing.
+- The app does not automatically upload materials to a server.
+
+Never publish unredacted certificate photos, ZIP exports, logs, or screenshots. They may contain names, student IDs, identity information, and other personal data.
+
+## Development
+
+### Requirements
+
+- Android Studio
+- JDK 17
+- Android SDK Platform 35
+- Network access for downloading Gradle dependencies
+
+### Build and Test
+
+```powershell
+.\gradlew.bat test
+.\gradlew.bat assembleDebug
+```
+
+The tests primarily cover pure Kotlin rules such as academic-year classification, file-name generation, and pre-export validation. Camera capture, file picking, image importing, ZIP sharing, and Android-version compatibility still require device or emulator verification.
+
+## Architecture
+
+Room is the local source of truth. Compose screens read and update records through `AppViewModel`, photos are managed by `PhotoStore`, export validation is handled by `ExportCheck`, and `ZipExporter` creates the final ZIP package.
+
+The project uses Kotlin, Jetpack Compose, Material 3, AndroidX, Room, and KSP. See [CODE_STRUCTURE.md](CODE_STRUCTURE.md) for detailed module ownership.
 
 ## Project Status
 
-The project is an early working prototype. The repository does not currently include release signing configuration, a published APK, or an automated CI/CD workflow.
+Current version: `1.1.0-dev`
+
+The basic record, photo-management, academic-year validation, and ZIP-export workflows are implemented, but the project is still under development. Release signing, automated CI/CD, and full physical-device acceptance testing are not complete. See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session updates.
+
+## Help and Contributing
+
+Use GitHub Issues for reproducible bugs and focused feature requests. Remove personal information, certificate images, authentication data, and local paths before sharing issue material.
 
 ## License
 
-No open-source license has been declared yet. Add an appropriate License file before public distribution.
+No open-source license has been declared yet. Add an appropriate License file before public distribution or external contributions.
+
+## Disclaimer
+
+Zongce is not an official school application and does not define any school's assessment rules. School fields, time windows, and material requirements may change; follow official notices.
+
+---
+
+中文版本：[README.md](README.md) · 代码结构：[CODE_STRUCTURE.md](CODE_STRUCTURE.md) · 版本记录：[VERSION_HISTORY.md](VERSION_HISTORY.md)
