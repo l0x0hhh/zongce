@@ -63,7 +63,7 @@ object ExportCheck {
             }
 
             if (r.wuyu.isBlank()) {
-                issues += Issue(Level.BLOCK, r.id, "第 ${r.id} 条：未选择「归属五育」，照片不知道放进哪个文件夹")
+                issues += Issue(Level.BLOCK, r.id, "第 ${r.id} 条：未选择五育归属，照片不知道放进哪个文件夹")
             }
 
             // 3) 没照片 → 填系统时传什么

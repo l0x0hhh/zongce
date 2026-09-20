@@ -15,6 +15,9 @@ import com.zongce.app.data.RecordWithPhotos
 import com.zongce.app.export.ExportCheck
 import com.zongce.app.export.ExportResult
 import com.zongce.app.export.ZipExporter
+import com.zongce.app.update.UpdateCheckResult
+import com.zongce.app.update.UpdateChecker
+import com.zongce.app.update.UpdateInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +52,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
     val exportState: StateFlow<ExportState> = _exportState.asStateFlow()
+
+    private val _updateState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    val updateState: StateFlow<UpdateUiState> = _updateState.asStateFlow()
 
     /** 最近一次导出预览字段名（导出前过目一眼——文件名是公开可读的） */
     fun previewFileName(record: AwardRecord): String =
@@ -131,6 +137,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetExport() {
         _exportState.value = ExportState.Idle
+    }
+
+    fun checkForUpdate() {
+        if (_updateState.value is UpdateUiState.Checking ||
+            _updateState.value is UpdateUiState.Downloading
+        ) return
+        _updateState.value = UpdateUiState.Checking
+        viewModelScope.launch {
+            runCatching { UpdateChecker.check() }
+                .onSuccess { result ->
+                    _updateState.value = when (result) {
+                        is UpdateCheckResult.UpToDate -> UpdateUiState.UpToDate(result.currentVersion)
+                        is UpdateCheckResult.Available -> UpdateUiState.Available(result.info)
+                    }
+                }
+                .onFailure { error ->
+                    _updateState.value = UpdateUiState.Error(
+                        error.message ?: "请检查网络后重试"
+                    )
+                }
+        }
+    }
+
+    fun downloadUpdate(info: UpdateInfo) {
+        _updateState.value = UpdateUiState.Downloading(info, -1)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                UpdateChecker.download(getApplication(), info) { progress ->
+                    _updateState.value = UpdateUiState.Downloading(info, progress)
+                }
+            }.onSuccess { file ->
+                _updateState.value = UpdateUiState.Ready(info, file)
+            }.onFailure { error ->
+                _updateState.value = UpdateUiState.Error(
+                    error.message ?: "下载失败，请稍后重试"
+                )
+            }
+        }
+    }
+
+    fun resetUpdate() {
+        _updateState.value = UpdateUiState.Idle
     }
 
     /** 按用户选定的评价学年体检并导出。 */

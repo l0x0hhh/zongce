@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 共享相机照片、导出材料包和更新 APK。 -->
 <paths>
     <!-- 拍照临时文件 -->
     <cache-path name="camera_tmp" path="camera_tmp/" />
     <!-- 导出的 ZIP -->
     <cache-path name="exports" path="exports/" />
+    <!-- 下载完成后交给系统安装器，临时 .part 文件不会被共享。 -->
+    <cache-path name="updates" path="updates/" />
     <!-- 原图存储目录（预览分享用） -->
     <files-path name="photos" path="photos/" />
 </paths>

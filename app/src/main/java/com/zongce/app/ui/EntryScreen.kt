@@ -1,4 +1,4 @@
-// 录入页展示照片导入结果，避免失败被用户误认为已经保存。
+// 录入页展示照片导入结果，统一五育文案并避免失败被用户误认为已经保存。
 package com.zongce.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -16,8 +16,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -46,12 +47,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
 import com.zongce.app.core.AcademicYear
 import com.zongce.app.data.AwardPhoto
 import com.zongce.app.data.AwardRecord
 import com.zongce.app.data.LEVEL_OPTIONS
+import com.zongce.app.data.PhotoStore
 import com.zongce.app.data.ROLE_OPTIONS
 import com.zongce.app.data.WUYU_LIST
 import java.time.Instant
@@ -71,6 +75,7 @@ fun EntryScreen(
     onDone: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val photoStore = remember { PhotoStore(context) }
     val pendingUris by vm.pendingUris.collectAsState()
 
     var editingId by remember { mutableStateOf(recordId) }
@@ -130,37 +135,48 @@ fun EntryScreen(
         Spacer(Modifier.height(12.dp))
 
         // ---------- 照片 ----------
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            existingPhotos.forEach { photo ->
-                Box(modifier = Modifier.size(72.dp)) {
-                    PhotoThumb(
-                        file = com.zongce.app.data.PhotoStore(context).photoFile(photo.fileName),
-                        size = 72
-                    )
-                    IconButton(
-                        onClick = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("证明材料", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "${existingPhotos.size + extraUris.size} 张",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        if (existingPhotos.isEmpty() && extraUris.isEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "还没有照片，建议先拍下证书或从相册选择",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        } else {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(existingPhotos, key = { it.id }) { photo ->
+                    PhotoPreview(
+                        label = "已保存",
+                        onRemove = {
                             removedIds.add(photo.id)
                             existingPhotos.remove(photo)
-                        },
-                        modifier = Modifier.align(Alignment.TopEnd).size(24.dp)
+                        }
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "移除",
-                            modifier = Modifier.size(14.dp))
+                        PhotoThumb(file = photoStore.photoFile(photo.fileName), size = 96)
                     }
                 }
-            }
-            extraUris.forEach { uri ->
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { extraUris.remove(uri) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("新照片\n点击移除", style = MaterialTheme.typography.labelSmall)
-                        }
+                items(extraUris, key = { it.toString() }) { uri ->
+                    PhotoPreview(
+                        label = "待保存",
+                        onRemove = { extraUris.remove(uri) }
+                    ) {
+                        UriPhotoThumb(uri = uri, size = 96)
                     }
                 }
             }
@@ -173,11 +189,13 @@ fun EntryScreen(
         Spacer(Modifier.height(16.dp))
 
         // ---------- 归属五育（必选） ----------
-        Text("归属五育 *", style = MaterialTheme.typography.labelMedium,
+        Text("归到五育其一 *", style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(vertical = 8.dp)) {
-            WUYU_LIST.forEach { w ->
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
+            items(WUYU_LIST) { w ->
                 FilterChip(
                     selected = wuyu == w,
                     onClick = { wuyu = w },
@@ -229,7 +247,13 @@ fun EntryScreen(
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(12.dp))
-        DropdownField("本人角色或排名", role, ROLE_OPTIONS, onChange = { role = it })
+        DropdownField(
+            label = "本人角色或排名",
+            value = role,
+            options = ROLE_OPTIONS,
+            onChange = { role = it },
+            groups = roleOptionGroups(ROLE_OPTIONS)
+        )
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = issuer,
@@ -250,7 +274,7 @@ fun EntryScreen(
         Button(
             onClick = {
                 when {
-                    wuyu.isBlank() -> blockedMsg = "先选一个「归属五育」——它决定照片导出进哪个文件夹"
+                    wuyu.isBlank() -> blockedMsg = "请选择五育中的一项，它决定照片导出进哪个文件夹"
                     awardName.isBlank() -> blockedMsg = "获奖名称不能为空，导出文件名要用"
                     yearCheck.status == AcademicYear.Status.OUT_OF_RANGE -> blockedMsg = yearCheck.message
                     else -> {
@@ -328,4 +352,43 @@ private fun YearHint(check: AcademicYear.Check) {
             MaterialTheme.colorScheme.error
     }
     Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+}
+
+@Composable
+private fun PhotoPreview(
+    label: String,
+    onRemove: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(modifier = Modifier.size(96.dp).clip(MaterialTheme.shapes.small)) {
+        content()
+        Surface(
+            color = Color.Black.copy(alpha = 0.56f),
+            shape = CircleShape,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(28.dp)
+        ) {
+            IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "移除照片",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+        Surface(
+            color = Color.Black.copy(alpha = 0.56f),
+            modifier = Modifier.align(Alignment.BottomStart)
+        ) {
+            Text(
+                label,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+            )
+        }
+    }
 }

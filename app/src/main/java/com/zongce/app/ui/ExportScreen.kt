@@ -1,4 +1,4 @@
-// 导出页展示体检结果、进度和最终材料包操作。
+// 导出页：把范围、体检、打包和分享状态收进一条清晰流程。
 package com.zongce.app.ui
 
 import android.content.Intent
@@ -10,13 +10,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,16 +46,10 @@ import com.zongce.app.core.AcademicYear
 import com.zongce.app.data.RecordWithPhotos
 import com.zongce.app.export.ExportCheck
 
-/**
- * 导出 = 英雄时刻。
- * 用户辛苦一年的照片，价值在这一刻兑现：一键 → 进度 → 清点页 → 分享面板。
- * 中间不要有多余的确认。
- */
 @Composable
 fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
     val context = LocalContext.current
     val state by vm.exportState.collectAsState()
-    // 导出目标学年可回看，避免新学年开始后无法导出上一学年的材料。
     val availableYears = remember(items) {
         (items.mapNotNull { item ->
             item.record.awardDate.takeIf { it.isNotBlank() }
@@ -54,78 +60,197 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
     LaunchedEffect(availableYears) {
         if (targetYear !in availableYears) targetYear = availableYears.first()
     }
+    val selectedCount = items.count { AcademicYear.belongsTo(it.record.awardDate, targetYear) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
-        Text("导出材料包", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "解压就是五育文件夹 + 填报核对.txt\n目标评价学年 ${AcademicYear.LABEL}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.size(48.dp)
+            ) {
+                androidx.compose.material3.Icon(
+                    Icons.Default.Archive,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("导出材料包", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "把记录整理成可提交的文件夹",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("本次导出范围", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "$targetYear · $selectedCount 条记录",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    "${items.sumOf { it.photos.size }} 张照片",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        DropdownField(
+            label = "目标评价学年",
+            value = targetYear,
+            options = availableYears,
+            onChange = { targetYear = it }
         )
         Spacer(Modifier.height(20.dp))
 
-        DropdownField("目标评价学年", targetYear, availableYears, onChange = { targetYear = it })
-        Spacer(Modifier.height(12.dp))
-
-        when (val s = state) {
+        when (val current = state) {
             is ExportState.Idle -> {
-                val selectedCount = items.count { AcademicYear.belongsTo(it.record.awardDate, targetYear) }
-                Text("目标学年有 $selectedCount 条记录，导出前会自动体检。")
-                Spacer(Modifier.height(16.dp))
+                ExportSectionTitle("准备导出", "先检查字段和照片，再生成 ZIP 材料包。")
+                Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = { vm.checkBeforeExport(items, targetYear) },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("一键导出") }
+                ) {
+                    androidx.compose.material3.Icon(Icons.Default.Archive, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("检查并导出")
+                }
             }
 
             is ExportState.Blocked -> {
-                BlockedList(s.issues)
-                Spacer(Modifier.height(16.dp))
-                Button(
+                BlockedList(current.issues)
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
                     onClick = { vm.resetExport() },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("回去改") }
+                ) {
+                    androidx.compose.material3.Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("返回记录修改")
+                }
             }
 
             is ExportState.Exporting -> {
-                val total = s.total.coerceAtLeast(1)
-                LinearProgressIndicator(
-                    progress = s.done.toFloat() / total,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(12.dp))
-                Text("正在处理照片 ${s.done} / ${s.total}",
-                    style = MaterialTheme.typography.bodyMedium)
-            }
-
-            is ExportState.Done -> {
-                val r = s.result
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("导出完成", style = MaterialTheme.typography.titleMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Icon(
+                                Icons.Default.Archive,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("正在整理材料", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        val total = current.total.coerceAtLeast(1)
+                        LinearProgressIndicator(
+                            progress = current.done.toFloat() / total,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(Modifier.height(8.dp))
-                        Text("${r.wuyuCount} 育 · ${r.recordCount} 条 · ${r.photoCount} 张照片")
-                        Text("包大小 ${"%.1f".format(r.sizeBytes / 1024f / 1024f)} MB")
+                        Text(
+                            "已处理 ${current.done} / ${current.total} 张照片",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            is ExportState.Done -> {
+                val result = current.result
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("导出完成", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                            ExportMetric("${result.recordCount}", "条记录")
+                            ExportMetric("${result.photoCount}", "张照片")
+                            ExportMetric("${result.wuyuCount}", "育")
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "ZIP 大小 ${"%.1f".format(result.sizeBytes / 1024f / 1024f)} MB",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text("各育记录", style = MaterialTheme.typography.labelLarge)
                         Spacer(Modifier.height(8.dp))
-                        r.perWuyu.forEach { (w, n) -> Text("$w：$n 条") }
+                        result.perWuyu.forEach { (wuyu, count) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(wuyu, modifier = Modifier.weight(1f))
+                                Text(
+                                    "$count 条",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(16.dp))
                 Button(
                     onClick = {
                         val uri = FileProvider.getUriForFile(
-                            context, "${context.packageName}.fileprovider", r.file
+                            context,
+                            "${context.packageName}.fileprovider",
+                            result.file
                         )
                         val intent = Intent(Intent.ACTION_SEND).apply {
                             type = "application/zip"
@@ -135,31 +260,94 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                         context.startActivity(Intent.createChooser(intent, "发送材料包到…"))
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("发送到微信 / 网盘") }
-                Spacer(Modifier.height(12.dp))
-                Button(
+                ) {
+                    androidx.compose.material3.Icon(Icons.Default.Share, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("分享材料包")
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
                     onClick = { vm.resetExport() },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("再来一次") }
+                ) { Text("导出其他学年") }
             }
 
             is ExportState.Error -> {
-                Text(s.message, color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(16.dp))
-                Button(onClick = { vm.resetExport() }) { Text("知道了") }
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("导出失败", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(4.dp))
+                            Text(current.message, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { vm.resetExport() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("重新开始") }
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("导出做了什么", style = MaterialTheme.typography.labelLarge)
-            Text("· 每张图压到 3.5MB 内、统一转 JPG（系统限制 4M，仅收图片）",
-                style = MaterialTheme.typography.bodySmall)
-            Text("· 按「获奖时间_获奖名称_等级」命名，放你选的那一育文件夹",
-                style = MaterialTheme.typography.bodySmall)
-            Text("· 填报核对.txt 带照片相对路径，电脑上照着抄",
-                style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(20.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+                androidx.compose.material3.Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "文件夹按五育归类，照片会统一整理为 JPG，并附带填报核对.txt。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun ExportSectionTitle(title: String, subtitle: String) {
+    Column {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun ExportMetric(value: String, label: String) {
+    Column {
+        Text(value, style = MaterialTheme.typography.titleLarge)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -169,33 +357,52 @@ private fun BlockedList(issues: List<ExportCheck.Issue>) {
     val warns = issues.filter { it.level == ExportCheck.Level.WARN }
 
     if (blocks.isNotEmpty()) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer
-            ),
+        Surface(
+            color = MaterialTheme.colorScheme.errorContainer,
+            shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("有 ${blocks.size} 个问题必须改完", style = MaterialTheme.typography.titleSmall)
+                    androidx.compose.material3.Icon(
+                        Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("有 ${blocks.size} 项需要先处理", style = MaterialTheme.typography.titleSmall)
                 }
-                Spacer(Modifier.height(8.dp))
-                blocks.forEach {
-                    Text("· ${it.message}", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(10.dp))
+                blocks.forEach { issue ->
+                    Text("• ${issue.message}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(5.dp))
                 }
             }
         }
     }
     if (warns.isNotEmpty()) {
-        Spacer(Modifier.height(12.dp))
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text("提醒（不阻塞）", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
-                warns.forEach {
-                    Text("· ${it.message}", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(10.dp))
+        Surface(
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Icon(
+                        Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("导出提醒", style = MaterialTheme.typography.titleSmall)
+                }
+                Spacer(Modifier.height(10.dp))
+                warns.forEach { issue ->
+                    Text("• ${issue.message}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(5.dp))
                 }
             }
         }
