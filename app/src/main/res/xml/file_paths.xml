@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 拍照临时文件 -->
+    <cache-path name="camera_tmp" path="camera_tmp/" />
+    <!-- 导出的 ZIP -->
+    <cache-path name="exports" path="exports/" />
+    <!-- 原图存储目录（预览分享用） -->
+    <files-path name="photos" path="photos/" />
+</paths>

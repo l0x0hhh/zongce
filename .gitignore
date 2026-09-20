@@ -1,0 +1,21 @@
+# Android project ignores: keep local caches, build outputs, and machine settings out of Git.
+.gradle/
+**/build/
+.idea/
+.kotlin/
+.agents/
+local.properties
+*.iml
+.externalNativeBuild/
+.cxx/
+
+# Local environment and signing material.
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+
+# OS and editor files.
+.DS_Store
+Thumbs.db
