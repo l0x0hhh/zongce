@@ -32,6 +32,7 @@
 - 导出流程中锁定学年下拉（仅 `Idle` / `Blocked` 状态可改），避免确认之后改档位导致显示范围与实际打包范围不一致。
 - `ExportCheckTest` 新增 2 个用例（总数 12）：选填字段只提醒不阻塞、跨学年记录只提示且过滤计数正确。
 - 修掉 release 流水线的**签名路径缺陷**：`app/build.gradle.kts` 读 `signingStoreFile` 用的是模块级 `file()`，**相对路径按 `app/` 模块目录解析**，而 `.github/workflows/release.yml` 是把解出来的 keystore 放在**仓库根**的 → CI 必然报 `.../app/release.keystore not found`。改用 `rootProject.file()`：相对路径=仓库根、绝对路径原样使用，两种写法都对，本地与 CI 语义一致。已做修复前/修复后的对照复现（修复前同一命令失败、修复后通过）。
+- 更新检查改为**双源取较新版本**：同时问镜像与 GitHub，取版本号更高的那个。此前是"镜像可达即权威"，镜像一旦忘了同步，用户会被**永久卡在旧版本**、再也收不到更新；现在镜像退化成"可选加速"，两边只要有一边通就能检查（两边都失败才报错，并把两边原因都带上）。同时：`apkUrl` 强制 **HTTPS**（targetSdk 35 禁明文，否则下载会被系统拦掉、报错还很难懂）；`openConnection` 的报错文案改用调用方标签（此前读**镜像**失败也报「GitHub 返回 HTTP xxx」，会把排查带偏）。新增 `UpdateCheckerTest` 12 个用例覆盖版本比较（含 `1.10 > 1.9` 这种字符串比较会判反的情况）、双源择优与 HTTPS 校验；本地 `:app:testDebugUnitTest` 共 **24 个用例全绿**。
 
 - 初始化 Android 项目 Git 仓库并推送到 GitHub。
 - 增加中英文项目说明：`README.md`、`README.en.md`。
