@@ -6,20 +6,21 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.2.0-dev` |
-| 版本状态 | 开发中 |
+| 版本号 | `1.2.0` |
+| 版本状态 | 已发布（tag `v1.2.0`） |
 | 最近更新 | 2026-09-21 |
-| 最近文档提交 | `1e9e49e` |
-| Android 应用版本 | `versionName 1.2.0` / `versionCode 2` |
+| 最近文档提交 | `2513123` |
+| Android 应用版本 | `versionName 1.2.0` / `versionCode 1000003`（正式包；本地默认仍是 `2`） |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 干净，与 `origin/main` 同步（本批已提交并推送：`1e9e49e`） |
+| 工作区状态 | 干净，与 `origin/main` 同步（tip `2513123`）。发布 tag `v1.2.0` 指向 `dd78f45`，比 tip 早一个提交 —— 原因见「验证状态」里的说明 |
 
 ## 本版本更新
 
 - **实现桌面小组件本体**（此前只有入口协议，见「已知未完成」）：新增 `widget/JicunWidget.kt`（Glance 界面）+ `widget/JicunWidgetReceiver.kt` + `res/xml/jicun_widget_info.xml`，在 `AndroidManifest.xml` 注册 `exported="false"` 的 receiver。组件是一张 3×2 的白色卡片：标题行（logo + 「暨存」）点开正常启动 App，「拍照」直接进系统相机、「相册」直接进图片选择器。点击只发带 action 的显式 Intent（`WIDGET_CAPTURE` / `WIDGET_PICK_PHOTOS`），拍照与相册逻辑仍由 `MainActivity` + `CaptureScreen` 处理，组件不碰数据库、不保存照片——与 ADR-0001 的约定一致。
   - 两处必须注意的实现细节：**入口 Intent 必须带 `FLAG_ACTIVITY_NEW_TASK`**（否则从桌面点开会另起一个 App 实例，而不是走 `singleTop` 的 `onNewIntent`）；**两个 action 必须是不同的字符串**（`PendingIntent` 的相等性只看 action/组件/requestCode，不看 extras，action 相同会互相覆盖，两个按钮就都变成同一个入口）。
   - 组件里**不要直接引用 `drawable/logo.png`**（1254×1254 / 1.1MB）：桌面渲染由 launcher 进程解码，会白吃几 MB 内存。新增 `drawable-xxhdpi/widget_logo.png`（72px / 7.5KB）专供组件标题行。两枚按钮图标是自带填色的矢量图（`ic_widget_camera.xml` 白、`ic_widget_gallery.xml` 主色）。
+  - **release 包里 `res/xml/jicun_widget_info.xml` 会被改名**：`optimizeReleaseResources` 把资源路径缩短成 `res/4R.xml`（debug 包仍是原名）。manifest 的 meta-data 用的是资源 id `0x7f0f0001`，不受影响；但去 release 包里找这个文件名会扑空——用 `aapt2 dump resources | grep jicun_widget_info` 按 id 反查。
   - 新增依赖 `androidx.glance:glance-appwidget:1.1.0`。**体积代价实测约 +1.5MB**：未混淆的 release 包 11.41MB → 12.87MB（+1.46MB / +13%，对比线上 `jicun-1.1.0.apk`）；debug 包同向 +1.7MB 左右（约 19.1MB → 20.78MB，旧值为按同一压缩率推算）。两种构建的结论一致，代价可接受，故沿用 Glance 而不是手写 RemoteViews。
   - ⚠️ **别拿 CI artifact 的 `size_in_bytes` 当 APK 体积**：artifact 是 zip，本地实测整包压缩率约 15%（20.78MB 的 APK → 17.63MB 的 zip，与 CI 的 17.65MB 吻合）。本次就踩了：用「本地 APK 20.78MB」对比「旧 artifact 16.19MB」，得出「debug 涨了 5.6MB」的错误结论，差点据此放弃 Glance。**比体积必须同口径**（APK 对 APK，或 zip 对 zip）。
   - 验证方式：`:app:testDebugUnitTest --rerun` **24 个用例全绿**（6+3+3+12）；`assembleDebug` / `assembleRelease` 均 `BUILD SUCCESSFUL`；用 `aapt2 dump xmltree` 反查 APK，确认 `JicunWidgetReceiver`（`exported=false` + `APPWIDGET_UPDATE` + `android.appwidget.provider` meta-data）与 `res/xml/jicun_widget_info.xml`（180×110dp、3×2 格、`updatePeriodMillis=0`）都正确进包。推送后 **CI #10 / #11 均 success**（`Run unit tests` + `Assemble debug APK` + 上传产物）。**仍未做的是真机/模拟器上把组件真正拖到桌面看渲染效果**。
@@ -83,6 +84,8 @@
 - [x] Android Debug APK 构建验证（CI）：GitHub Actions `CI #5` 对提交 `70b296a` 的 `verify` 作业全部通过，含 `Assemble debug APK` 与 `Upload debug APK`，产物 `jicun-debug-70b296a…`（16.2 MB）。这是本仓库 **CI 首次转绿** —— 此前 `CI #1`～`#4` 全部失败，且失败步骤恒为 `Run unit tests`，APK 步骤因此每次都被跳过（根因即上面那条时间依赖的红测试，修好后连带消失）。
 - [x] **正式签名链路验证（本机实签）**：用重新生成的 keystore 执行 `./gradlew :app:assembleRelease -PsigningStoreFile=release.keystore …`（刻意用**相对路径**，与 CI 的 `gradle.properties` 写法一致）→ `BUILD SUCCESSFUL`，产出 **`app-release.apk`（不是 `-unsigned`）**，`apksigner verify` 报 **`Verifies`**（v2 方案、1 个签名者、RSA 2048）。同一命令在修复签名路径前会报 `app/release.keystore not found`。
 - [x] **正式 Release 已发布（2026-09-21）**：`暨存 v1.1.0` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.1.0 ，资产 `jicun-1.1.0.apk`（11.41 MB）。Release 流水线 `#2`（提交 `0be3016`）10 个步骤全绿。**这是本仓库第一个 Release**：落地页所有下载入口、以及 App 内「检查更新」的 GitHub Release 回退路径，此前都指向一个空列表，现在有真实目标了。线上包已下载回来复验：`apksigner verify` 报 `Verifies`，证书与本机 keystore 一致，包信息 `com.zongce.app` / versionCode 1000002 / versionName 1.1.0。
+- [x] **正式 Release 已发布（2026-09-21）**：`暨存 v1.2.0` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.2.0 ，资产 `jicun-1.2.0.apk`（12.88 MB）。Release 流水线 `#3`（提交 `dd78f45`）10 个步骤全绿。**versionCode `1000003` > 线上 v1.1.0 的 `1000002`，可直接覆盖升级**（本地构建的 `versionCode` 默认是 2，装不上去，别再拿本地包做真机测试）。线上包已下载回来复验：`apksigner verify` 报 `Verifies`，证书 SHA-256 `7a1eeb88…` 与本机 keystore 一致；`aapt2 dump badging` 得 `com.zongce.app` / versionCode 1000003 / versionName 1.2.0 / label 暨存；小组件 receiver 与组件规格（180×110dp、3×2 格、`updatePeriodMillis=0`）都在包里。相比 v1.1.0 的 11.41 MB，体积 +1.47 MB（即 Glance 的代价）。
+  - ⚠️ **该 tag 指向 `dd78f45`，正好是 `2513123`（Gitee 镜像自动化）的父提交** —— 两者只差 5 分钟（打 tag 15:24，那次提交 15:29）。所以**这个已发布 APK 的 `UPDATE_MANIFEST_URL` 是空串：应用内更新仍然只走 GitHub Release 回退**，`release.yml` 里的三步 Gitee 同步也不在它里面（Release #3 的步骤表只有 10 步可证）。这不是缺陷（v1.1.0 同样如此），但**镜像要真正生效，得等 Gitee 仓库有分支且 `GITEE_TOKEN` / `GITEE_OWNER` / `GITEE_REPO` 配好之后重新发一版**（重指 tag 重跑，或出 v1.2.1）。配好之前重发没有意义——清单地址仍是空串，产物一模一样。
 - [ ] 真机或模拟器功能验证。
 
 ## 最近一次提交

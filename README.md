@@ -120,6 +120,7 @@ docs/adr/                  # 架构决策记录
 - **CI**（`.github/workflows/ci.yml`）：推 `main` 或提 PR 时跑 `./gradlew test` + `:app:assembleDebug`，push 时上传 debug APK 产物（保留 14 天）。
 - **发布**（`.github/workflows/release.yml`）：推 `v*.*.*` 标签或手动触发，解出签名密钥 → 跑测试 → 构建签名 Release APK → 重命名为 `jicun-<版本>.apk` → 创建 GitHub Release（`versionCode = 1000000 + 构建号`）。
 - **签名 Secrets**：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。密钥只放 GitHub Actions Secrets，不提交仓库（`*.keystore` 已在 `.gitignore` 中）。
+- **国内镜像（可选）**：再配 1 个 Secret `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects`）和 2 个 Variables `GITEE_OWNER` / `GITEE_REPO`，发版时会额外把 APK 传到 Gitee Release、并把 `latest.json` 更新到镜像仓库的 raw 固定路径。**三项缺任一项，镜像整段自动跳过**，GitHub 侧的发布不受影响。镜像仓库需先有分支（网页上建一个文件即可）。
 - 未配置签名参数时本地仍可构建 release，只是产物未签名。
 
 ## 已知未完成
@@ -130,7 +131,7 @@ docs/adr/                  # 架构决策记录
 
 ## 当前版本
 
-`1.2.0-dev`（应用 `versionName 1.2.0` / `versionCode 2`）。版本与开发会话记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
+`1.2.0`（应用 `versionName 1.2.0`）。版本与开发会话记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
 
 ## 反馈与贡献
 

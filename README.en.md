@@ -120,6 +120,7 @@ See [CODE_STRUCTURE.md](CODE_STRUCTURE.md) for per-module ownership and [AGENTS.
 - **CI** (`.github/workflows/ci.yml`): on pushes to `main` and pull requests, runs `./gradlew test` and `:app:assembleDebug`; pushes also upload the debug APK artifact (kept 14 days).
 - **Release** (`.github/workflows/release.yml`): triggered by a `v*.*.*` tag or manually; decodes the signing key, runs tests, builds a signed release APK, renames it to `jicun-<version>.apk`, and creates a GitHub Release (`versionCode = 1000000 + build number`).
 - **Signing secrets**: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Keep them in GitHub Actions Secrets; `*.keystore` is git-ignored.
+- **Optional mirror (Gitee)**: add one more Secret `GITEE_TOKEN` (a Gitee personal token with the `projects` scope) plus two Variables `GITEE_OWNER` / `GITEE_REPO`, and a release will also upload the APK to a Gitee Release and refresh `latest.json` at a fixed raw path. **If any of the three is missing the whole mirror step is skipped** and the GitHub release is unaffected. The mirror repository needs at least one branch first (create any file on the web UI).
 - Without signing properties a local release build still succeeds; the APK is simply unsigned.
 
 ## Known gaps
@@ -130,7 +131,7 @@ See [CODE_STRUCTURE.md](CODE_STRUCTURE.md) for per-module ownership and [AGENTS.
 
 ## Current version
 
-`1.2.0-dev` (app `versionName 1.2.0` / `versionCode 2`). See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session history.
+`1.2.0` (app `versionName 1.2.0`). See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session history.
 
 ## Feedback and contributions
 
