@@ -6,6 +6,12 @@
 #   Secret    GITEE_TOKEN   —— Gitee 私人令牌，勾 projects（仓库读写）权限
 #   Variable  GITEE_OWNER   —— Gitee 用户名，例如 l0x0hhh
 #   Variable  GITEE_REPO    —— Gitee 镜像仓库名，例如 Jicun
+#
+# 另外可选：把 APK 同步到宣传页仓库（落地页自己托管安装包，下载才能保证是 .apk，
+# 而不是被第三方图床标成 application/zip 后、被安卓浏览器存成 .zip）。缺配置同样跳过：
+#   Secret    LANDING_TOKEN —— 对落地页仓库有 contents:write 权限的 GitHub 令牌
+#   Variable  LANDING_REPO  —— 落地页仓库，默认 l0x0hhh/JICUN
+# 没配也不要紧：落地页仓库自带一个每天拉取最新包的兜底 workflow。
 name: Release
 
 on:
@@ -30,6 +36,8 @@ jobs:
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
       GITEE_OWNER: ${{ vars.GITEE_OWNER }}
       GITEE_REPO: ${{ vars.GITEE_REPO }}
+      LANDING_TOKEN: ${{ secrets.LANDING_TOKEN }}
+      LANDING_REPO: ${{ vars.LANDING_REPO || 'l0x0hhh/JICUN' }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -183,3 +191,27 @@ jobs:
           echo "$FETCHED" | grep -q "\"${V}\"" \
             || { echo "::error::清单回读校验失败：读到的内容里没有版本号 ${V}"; exit 1; }
           echo "镜像清单已就绪：https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json"
+
+      # ---------- 宣传页（落地页自托管安装包）----------
+      # 落地页把 APK 放在自己站点里，下载才是同源直下、且能带正确的 Content-Type
+      # （第三方图床会把 APK 标成 application/zip，安卓浏览器就存成 .zip）。
+      # 和 Gitee 镜像一样：没配令牌就整段跳过，绝不拦住正式发布。
+      - name: Publish the APK to the landing page
+        if: env.LANDING_TOKEN != ''
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/landing"
+          git clone --depth 1 \
+            "https://x-access-token:${LANDING_TOKEN}@github.com/${LANDING_REPO}.git" "$WORK"
+          mkdir -p "$WORK/public/downloads"
+          cp "jicun-${RELEASE_VERSION#v}.apk" "$WORK/public/downloads/jicun.apk"
+          # 用 status --porcelain 判变化（git diff 看不出新增的未跟踪文件，踩过这个坑）。
+          if [ -z "$(git -C "$WORK" status --porcelain -- public/downloads/jicun.apk)" ]; then
+            echo "落地页的安装包已是最新，无需提交。"
+            exit 0
+          fi
+          git -C "$WORK" add public/downloads/jicun.apk
+          git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
+            commit -q -m "chore: sync APK from 暨存 ${RELEASE_VERSION#v}"
+          git -C "$WORK" push -q origin HEAD
+          echo "已同步到落地页：public/downloads/jicun.apk（Netlify 会自动重新部署）"

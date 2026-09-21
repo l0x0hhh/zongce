@@ -60,6 +60,8 @@ comprehensive-assessment-materials_2025-2026.zip
 
 Get the latest `jicun-<version>.apk` from [Releases](https://github.com/l0x0hhh/zongce/releases). The first install requires allowing "install unknown apps" in system settings.
 
+You can also download straight from the product page: **https://jicun.netlify.app**. The installer is hosted by the page itself, so one tap downloads a `.apk` — no redirects, and no "it saved as a `.zip`" surprise.
+
 ### Behind a slow network
 
 When GitHub is slow or unreachable, host your own mirror: place a `latest.json` at the mirror root and build with the Gradle property `updateManifestUrl` so the app reads the mirror first and falls back to GitHub Release automatically.
@@ -121,7 +123,23 @@ See [CODE_STRUCTURE.md](CODE_STRUCTURE.md) for per-module ownership and [AGENTS.
 - **Release** (`.github/workflows/release.yml`): triggered by a `v*.*.*` tag or manually; decodes the signing key, runs tests, builds a signed release APK, renames it to `jicun-<version>.apk`, and creates a GitHub Release (`versionCode = 1000000 + build number`).
 - **Signing secrets**: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Keep them in GitHub Actions Secrets; `*.keystore` is git-ignored.
 - **Optional mirror (Gitee)**: add one more Secret `GITEE_TOKEN` (a Gitee personal token with the `projects` scope) plus two Variables `GITEE_OWNER` / `GITEE_REPO`, and a release will also upload the APK to a Gitee Release and refresh `latest.json` at a fixed raw path. **If any of the three is missing the whole mirror step is skipped** and the GitHub release is unaffected. The mirror repository needs at least one branch first (create any file on the web UI).
+- **Optional product-page sync**: add one Secret `LANDING_TOKEN` (a token with `contents:write` on the landing repo `l0x0hhh/JICUN`; override the repo with the Variable `LANDING_REPO`), and a release will overwrite the landing page's `public/downloads/jicun.apk`, which makes Netlify redeploy. **Skipped when unset** — the landing repo has its own daily workflow that pulls the latest APK as a fallback.
 - Without signing properties a local release build still succeeds; the APK is simply unsigned.
+
+## Release process
+
+A release goes in this order (★ = the only two manual steps):
+
+1. **Edit code → push `main`** (automatic): CI runs unit tests and `assembleDebug`. **A green build only means "it compiles and the tests pass"** — not that it works on a device.
+2. ★ **Verify on a device (recommended)**: **do not use CI's debug APK** — its `versionCode` is fixed at 2, so it will not install (the released APK is `1000000 + build number`), and it is debug-signed, so a forced install needs an uninstall that also wipes the photos in the app's private storage. Build a signed APK with a version code above the released one instead:
+   ```powershell
+   .\gradlew.bat :app:assembleRelease -PversionName=1.2.2 -PreleaseVersionCode=1000006 -PsigningStoreFile=release.keystore
+   ```
+3. ★ **Tag and release**: `git tag v1.2.2 && git push origin v1.2.2` (or trigger the Release workflow manually with a version). The pipeline decodes the signing key, runs tests, builds the signed APK, and creates the GitHub Release.
+4. **Mirror and product page** (automatic): the same run also uploads the APK to the Gitee Release, refreshes the mirror's `latest.json`, and syncs the APK into the landing page's `public/downloads/jicun.apk`. Both steps are "run only if configured, skipped otherwise".
+5. The landing page is deployed by Netlify watching the repo — nothing else to do.
+
+> Only steps 2 and 3 are manual. Everything else is automatic, so "forgot to update the product page's installer" can no longer happen.
 
 ## Known gaps
 
@@ -131,7 +149,7 @@ See [CODE_STRUCTURE.md](CODE_STRUCTURE.md) for per-module ownership and [AGENTS.
 
 ## Current version
 
-`1.2.0` (app `versionName 1.2.0`). See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session history.
+`1.2.1` (app `versionName 1.2.1`). See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session history.
 
 ## Feedback and contributions
 

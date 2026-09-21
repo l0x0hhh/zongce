@@ -60,6 +60,8 @@
 
 到 [Releases](https://github.com/l0x0hhh/zongce/releases) 下载最新 `jicun-<版本>.apk`。首次安装需要在系统里允许"安装未知来源应用"。
 
+也可以直接从产品页下载：**https://jicun.netlify.app** —— 安装包由页面自己托管，点一下直接下 `.apk`，不跳转，也不会出现"下载下来变成 `.zip`"。
+
 ### 国内网络
 
 GitHub 访问不稳定时，可以自建镜像：把 `latest.json` 放在镜像根目录，构建时通过 Gradle 属性 `updateManifestUrl` 写入 APK，应用会优先读镜像、失败自动回退 GitHub Release。
@@ -121,7 +123,23 @@ docs/adr/                  # 架构决策记录
 - **发布**（`.github/workflows/release.yml`）：推 `v*.*.*` 标签或手动触发，解出签名密钥 → 跑测试 → 构建签名 Release APK → 重命名为 `jicun-<版本>.apk` → 创建 GitHub Release（`versionCode = 1000000 + 构建号`）。
 - **签名 Secrets**：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。密钥只放 GitHub Actions Secrets，不提交仓库（`*.keystore` 已在 `.gitignore` 中）。
 - **国内镜像（可选）**：再配 1 个 Secret `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects`）和 2 个 Variables `GITEE_OWNER` / `GITEE_REPO`，发版时会额外把 APK 传到 Gitee Release、并把 `latest.json` 更新到镜像仓库的 raw 固定路径。**三项缺任一项，镜像整段自动跳过**，GitHub 侧的发布不受影响。镜像仓库需先有分支（网页上建一个文件即可）。
+- **同步到产品页（可选）**：配 1 个 Secret `LANDING_TOKEN`（对落地页仓库 `l0x0hhh/JICUN` 有 `contents:write` 的令牌；仓库名可用 Variable `LANDING_REPO` 覆盖），发版时会把 APK 覆盖到落地页的 `public/downloads/jicun.apk`，Netlify 随之重新部署。**没配就跳过**，落地页仓库自己有个每天拉取最新包的兜底 workflow。
 - 未配置签名参数时本地仍可构建 release，只是产物未签名。
+
+## 发布流程
+
+一次正式发布按顺序走（★ = 唯一需要人工的两步）：
+
+1. **改代码 → 推 `main`**（自动）：触发 CI，跑单测 + `assembleDebug`。**绿灯只代表"能编译、单测过"**，不代表真机能用。
+2. ★ **真机验证（推荐）**：**不要用 CI 那个 debug 包**——它的 `versionCode` 固定为 2，装不上（线上包是 `1000000 + 构建号`），而且是 debug 签名，硬装得先卸载、App 私有目录里的照片会一起没。要验证就本地出一个签名包，并让版本号高于线上：
+   ```powershell
+   .\gradlew.bat :app:assembleRelease -PversionName=1.2.2 -PreleaseVersionCode=1000006 -PsigningStoreFile=release.keystore
+   ```
+3. ★ **打标签发版**：`git tag v1.2.2 && git push origin v1.2.2`（或在 Actions 里手动触发 Release 并填版本号）。流水线解签名密钥 → 跑测试 → 构建签名包 → 建 GitHub Release。
+4. **镜像与产品页**（自动）：同一次运行里还会把 APK 传到 Gitee Release、更新镜像的 `latest.json`、并把 APK 同步到落地页的 `public/downloads/jicun.apk`。这两段都是"配了才跑、缺配置自动跳过"。
+5. 落地页由 Netlify 监听仓库自动部署，无需额外操作。
+
+> 只有第 2、3 步需要人工，其余全自动。**"忘了更新产品页的安装包"不会再发生了**——发版时会一起同步。
 
 ## 已知未完成
 
@@ -131,7 +149,7 @@ docs/adr/                  # 架构决策记录
 
 ## 当前版本
 
-`1.2.0`（应用 `versionName 1.2.0`）。版本与开发会话记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
+`1.2.1`（应用 `versionName 1.2.1`）。版本与开发会话记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
 
 ## 反馈与贡献
 
