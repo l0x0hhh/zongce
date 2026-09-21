@@ -68,6 +68,7 @@
   结果：`BUILD SUCCESSFUL in 2m 27s`，`26 actionable tasks: 7 executed, 19 up-to-date`（`7 executed` 说明 `compileDebugKotlin`、`compileDebugUnitTestKotlin`、`testDebugUnitTest` 确为真实执行，非 UP-TO-DATE 假绿）；证据在 `app/build/test-results/testDebugUnitTest/TEST-*.xml`，时间戳 `2026-09-21T04:17:39Z`。
 - [x] Android Debug APK 构建验证（CI）：GitHub Actions `CI #5` 对提交 `70b296a` 的 `verify` 作业全部通过，含 `Assemble debug APK` 与 `Upload debug APK`，产物 `jicun-debug-70b296a…`（16.2 MB）。这是本仓库 **CI 首次转绿** —— 此前 `CI #1`～`#4` 全部失败，且失败步骤恒为 `Run unit tests`，APK 步骤因此每次都被跳过（根因即上面那条时间依赖的红测试，修好后连带消失）。
 - [x] **正式签名链路验证（本机实签）**：用重新生成的 keystore 执行 `./gradlew :app:assembleRelease -PsigningStoreFile=release.keystore …`（刻意用**相对路径**，与 CI 的 `gradle.properties` 写法一致）→ `BUILD SUCCESSFUL`，产出 **`app-release.apk`（不是 `-unsigned`）**，`apksigner verify` 报 **`Verifies`**（v2 方案、1 个签名者、RSA 2048）。同一命令在修复签名路径前会报 `app/release.keystore not found`。
+- [x] **正式 Release 已发布（2026-09-21）**：`暨存 v1.1.0` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.1.0 ，资产 `jicun-1.1.0.apk`（11.41 MB）。Release 流水线 `#2`（提交 `0be3016`）10 个步骤全绿。**这是本仓库第一个 Release**：落地页所有下载入口、以及 App 内「检查更新」的 GitHub Release 回退路径，此前都指向一个空列表，现在有真实目标了。线上包已下载回来复验：`apksigner verify` 报 `Verifies`，证书与本机 keystore 一致，包信息 `com.zongce.app` / versionCode 1000002 / versionName 1.1.0。
 - [ ] 真机或模拟器功能验证。
 
 ## 最近一次提交
@@ -94,7 +95,9 @@
 - `ExportScreen` 顶部的「$targetYear · $selectedCount 条记录」仍用 `belongsTo` 计数，与 `ExportCheck.targetItems()` 的判定在「日期缺失或非法」时不一致。这类记录会被体检阻断，所以目前只影响显示，待统一。
 - `gradle.properties` 的 `android.overridePathCheck=true` 是当年中文路径时期的产物，AGP 每次构建都会警告它「experimental」。路径已是纯 ASCII，这项可以删掉。
 - 界面新增的提醒确认页还没上真机/模拟器过一遍（CI 只做到构建与单测）。
-- **Release 仍未发布成功**：tag `v1.1.0` 已存在，Release 流水线两次失败的原因都已定位并修掉（第一次＝4 个签名 Secret 未配好；第二次＝上面那条签名路径缺陷）。剩下只有在仓库 Secrets 里填好 `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`（keystore 已于 2026-09-21 13:26 重新生成），然后重跑流水线。**注意：仓库至今没有任何 Release，落地页的下载入口和 App 内的更新检查都指向它。**
+- **Release 已跑通（2026-09-21）**，两次失败的根因都已定位并修掉：第一次＝4 个签名 Secret 未配好（keystore 口令遗失，已重新生成）；第二次＝`signingStoreFile` 相对路径被按 `app/` 解析（已改用 `rootProject.file()`）。签名口令**不入库、不进记忆**，由刘总存在自己的密码管理器；丢了就再生成一把（发新版本时换 key 会让老安装升级失败，届时需先卸载——目前只有 1.1.0 一个版本，尚无此负担）。
+- GitHub Release 的发行说明目前只有一行 `Full Changelog` 链接（`generate_release_notes` 在没有 PR 的仓库里生成不出内容）。想给 1.1.0 写正式说明的话，去 Release 页面点编辑补上即可。
+- **release.yml 没传 `-PupdateManifestUrl`** → 正式包 `UPDATE_MANIFEST_URL` 为空 → App 内更新永远走 GitHub Release 回退，镜像清单形同虚设。要让国内用户走镜像需在 release.yml 里注入。
 
 早先的记录卡曾把 `MainActivity.kt`、`ExportCheck.kt`、`AppViewModel.kt`、`CaptureScreen.kt`、`EntryScreen.kt`、`ListScreen.kt`、`UpdateDialog.kt` 和 `update/` 列为未提交改动，这些文件已在提交 `9e8686d` 中入库。
 
