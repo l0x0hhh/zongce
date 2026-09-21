@@ -78,9 +78,12 @@ GitHub 访问不稳定时，可以自建镜像：把 `latest.json` 放在镜像�
 用 Android Studio 打开仓库根目录，等待 Gradle 同步后运行 `app` 模块即可。命令行：
 
 ```powershell
+$env:GRADLE_USER_HOME = "<仓库根目录>\.gradle-user"   # 可选：本仓库自带的 Gradle 缓存，缓存已预热
 .\gradlew.bat :app:assembleDebug --no-daemon     # 产物：app/build/outputs/apk/debug/app-debug.apk
 .\gradlew.bat :app:testDebugUnitTest --no-daemon # JVM 单元测试
 ```
+
+> **路径必须全 ASCII。** 仓库所在的完整路径中一旦出现中文（或任何非 ASCII 字符），Gradle 的 worker 进程会因命令行编码问题启动失败，报 `找不到或无法加载主类 worker.org.gradle.process.internal.worker.GradleWorkerMain` —— 此时 `assembleDebug` 可能通过，但 `testDebugUnitTest` 必挂。解决办法就是把仓库放在纯英文路径下（例如 `E:\AIstudy\project\Jicun`），而不是改 `GRADLE_USER_HOME`。
 
 ## 使用流程
 

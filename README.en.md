@@ -78,9 +78,12 @@ When GitHub is slow or unreachable, host your own mirror: place a `latest.json` 
 Open the repository root in Android Studio, wait for Gradle sync, and run the `app` module. From the command line:
 
 ```powershell
+$env:GRADLE_USER_HOME = "<repo-root>\.gradle-user"   # optional: repo-local, pre-warmed Gradle cache
 .\gradlew.bat :app:assembleDebug --no-daemon     # output: app/build/outputs/apk/debug/app-debug.apk
 .\gradlew.bat :app:testDebugUnitTest --no-daemon # JVM unit tests
 ```
+
+> **The path must be pure ASCII.** If any directory in the full repository path contains non-ASCII characters (for example Chinese), Gradle worker processes fail to start because of command-line encoding issues, reporting `无法加载主类 worker.org.gradle.process.internal.worker.GradleWorkerMain`. `assembleDebug` may still pass, but `testDebugUnitTest` will always fail. The fix is to keep the repository under an English-only path (for example `E:\AIstudy\project\Jicun`) — changing `GRADLE_USER_HOME` does not help.
 
 ## Getting started
 

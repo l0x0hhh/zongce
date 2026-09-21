@@ -119,13 +119,18 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
         }
 
         Spacer(Modifier.height(16.dp))
-        DropdownField(
-            label = "目标评价学年",
-            value = targetYear,
-            options = availableYears,
-            onChange = { targetYear = it }
-        )
-        Spacer(Modifier.height(20.dp))
+        // 学年选择只在"还能重新体检"的状态下开放。一旦进了确认/导出流程，
+        // 显示的范围和实际打包的范围必须是同一个 —— 否则用户改了下拉框，
+        // 打出来的还是已确认的旧范围。
+        if (state is ExportState.Idle || state is ExportState.Blocked) {
+            DropdownField(
+                label = "目标评价学年",
+                value = targetYear,
+                options = availableYears,
+                onChange = { targetYear = it }
+            )
+            Spacer(Modifier.height(20.dp))
+        }
 
         when (val current = state) {
             is ExportState.Idle -> {
@@ -144,6 +149,33 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
             is ExportState.Blocked -> {
                 BlockedList(current.issues)
                 Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { vm.resetExport() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    androidx.compose.material3.Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("返回记录修改")
+                }
+            }
+
+            is ExportState.Confirm -> {
+                ExportSectionTitle(
+                    "导出前请过目",
+                    "本次范围 ${current.targetYear}。这些不影响导出，确认无误即可继续。"
+                )
+                Spacer(Modifier.height(12.dp))
+                BlockedList(current.issues)
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { vm.confirmExport() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    androidx.compose.material3.Icon(Icons.Default.Archive, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("继续导出")
+                }
+                Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { vm.resetExport() },
                     modifier = Modifier.fillMaxWidth()

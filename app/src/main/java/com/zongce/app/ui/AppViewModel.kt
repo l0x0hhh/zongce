@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zongce.app.core.FileNameRule
-import com.zongce.app.core.AcademicYear
 import com.zongce.app.data.AppDatabase
 import com.zongce.app.data.AwardPhoto
 import com.zongce.app.data.AwardRecord
@@ -30,6 +29,12 @@ import kotlinx.coroutines.withContext
 sealed class ExportState {
     object Idle : ExportState()
     data class Blocked(val issues: List<ExportCheck.Issue>) : ExportState()
+
+    /** 没有阻断项、但有提醒项：先让用户过目，确认后才打包。 */
+    data class Confirm(
+        val targetYear: String,
+        val issues: List<ExportCheck.Issue>
+    ) : ExportState()
     data class Exporting(val done: Int, val total: Int) : ExportState()
     data class Done(val result: ExportResult) : ExportState()
     data class Error(val message: String) : ExportState()
@@ -135,7 +140,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- 导出（英雄时刻） ----------
 
+    /** 提醒确认页上「继续导出」要用的负载：已确认的范围与学年。 */
+    private var pendingExport: Pair<List<RecordWithPhotos>, String>? = null
+
     fun resetExport() {
+        pendingExport = null
         _exportState.value = ExportState.Idle
     }
 
@@ -181,20 +190,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _updateState.value = UpdateUiState.Idle
     }
 
-    /** 按用户选定的评价学年体检并导出。 */
+    /** 按用户选定的评价学年体检并导出：阻断项先去修，提醒项先过目。 */
     fun checkBeforeExport(
         list: List<RecordWithPhotos>,
-        targetYear: String = AcademicYear.targetLabel()
+        targetYear: String
     ) {
-        val exportItems = list.filter {
-            it.record.awardDate.isBlank() ||
-                AcademicYear.check(it.record.awardDate).status == AcademicYear.Status.OUT_OF_RANGE ||
-                AcademicYear.belongsTo(it.record.awardDate, targetYear)
+        // 全量记录直接交给体检：学年过滤只在 ExportCheck 里做一次。
+        // 调用方再过滤一遍的话，"另有 N 条属于其他学年"这条提醒会被算成 0，永远不显示。
+        val issues = ExportCheck.run(list, targetYear, photoStore::exists)
+        val exportItems = ExportCheck.targetItems(list, targetYear)
+
+        when {
+            ExportCheck.blocks(issues) -> {
+                pendingExport = null
+                _exportState.value = ExportState.Blocked(issues)
+            }
+
+            issues.isNotEmpty() -> {
+                pendingExport = exportItems to targetYear
+                _exportState.value = ExportState.Confirm(targetYear, issues)
+            }
+
+            else -> {
+                pendingExport = null
+                startExport(exportItems, targetYear)
+            }
         }
-        val issues = ExportCheck.run(exportItems, targetYear, photoStore::exists)
-        _exportState.value =
-            if (ExportCheck.blocks(issues)) ExportState.Blocked(issues) else ExportState.Idle
-        if (!ExportCheck.blocks(issues)) startExport(exportItems, targetYear)
+    }
+
+    /** 用户在提醒确认页确认无误后继续导出。 */
+    fun confirmExport() {
+        val pending = pendingExport ?: return
+        pendingExport = null
+        startExport(pending.first, pending.second)
     }
 
     private fun startExport(list: List<RecordWithPhotos>, targetYear: String) {

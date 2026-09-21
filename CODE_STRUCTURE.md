@@ -59,10 +59,12 @@ AppViewModel
 
 | 文件 | 职责 |
 | --- | --- |
-| `export/ExportCheck.kt` | 导出前阻断项和提醒项校验 |
+| `export/ExportCheck.kt` | 导出前体检：阻断项（缺字段、照片丢失）与提醒项（待补充字段、边界日、跨学年）。`targetItems()` / `excludedCount()` 是学年过滤的唯一实现，UI 与导出都必须调它们 |
 | `export/ZipExporter.kt` | 按五育生成目录、生成清单和写出 ZIP 文件 |
 
-导出流程的主要顺序是：筛选目标学年记录 → 运行 `ExportCheck` → 通过后调用 `ZipExporter` → 生成并分享 ZIP。
+导出流程的主要顺序是：运行 `ExportCheck` → 有阻断项则先修；只有提醒项则过确认页 → 用 `ExportCheck.targetItems()` 取本次范围 → `ZipExporter` → 生成并分享 ZIP。
+
+`ExportCheck.run()`、`ZipExporter.export()`、`AppViewModel.checkBeforeExport()` 的 `targetYear` 都是必填参数：这类"档位"参数一旦带默认值就会随系统日期静默滑动，调用方（尤其是测试）会在不自知的情况下换一个学年。
 
 ## 更新层
 
@@ -76,11 +78,11 @@ AppViewModel
 
 | 文件 | 职责 |
 | --- | --- |
-| `ui/AppViewModel.kt` | 记录流、照片导入、保存/删除、导出状态、更新状态和业务编排 |
+| `ui/AppViewModel.kt` | 记录流、照片导入、保存/删除、导出状态（Idle / Blocked / Confirm / Exporting / Done / Error）、更新状态和业务编排 |
 | `ui/CaptureScreen.kt` | 相机拍摄、系统图片选择和最近记录展示 |
 | `ui/EntryScreen.kt` | 新增、编辑获奖记录和表单校验 |
 | `ui/ListScreen.kt` | 记录列表、五育筛选、预览和删除入口 |
-| `ui/ExportScreen.kt` | 目标学年选择、校验反馈、导出进度和分享 |
+| `ui/ExportScreen.kt` | 目标学年选择（仅在可重新体检的状态下开放）、校验反馈、提醒确认页、导出进度和分享 |
 | `ui/UpdateDialog.kt` | 更新检查、下载进度和系统安装入口 |
 | `ui/GlassNavigationBar.kt` | 液态玻璃底部导航栏（半透明、细描边、选中态） |
 | `ui/Theme.kt` | 颜色、字体与圆角等视觉主题定义 |
@@ -94,7 +96,7 @@ AppViewModel
 | --- | --- |
 | `app/src/test/java/com/zongce/app/core/AcademicYearTest.kt` | 学年归属、边界和日期格式 |
 | `app/src/test/java/com/zongce/app/core/FileNameRuleTest.kt` | 文件名格式、清理和长度限制 |
-| `app/src/test/java/com/zongce/app/export/ExportCheckTest.kt` | 导出前材料完整性检查 |
+| `app/src/test/java/com/zongce/app/export/ExportCheckTest.kt` | 导出前体检：照片丢失阻塞、选填字段只提醒、跨学年只提示 |
 
 运行测试：
 

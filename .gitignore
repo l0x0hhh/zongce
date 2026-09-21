@@ -1,5 +1,6 @@
 # Android project ignores: keep local caches, build outputs, and machine settings out of Git.
 .gradle/
+.gradle-user/
 **/build/
 .idea/
 .kotlin/
@@ -8,6 +9,10 @@ local.properties
 *.iml
 .externalNativeBuild/
 .cxx/
+
+# Gradle/JVM crash diagnostics: machine-specific, never commit.
+worker-info.log
+hs_err_pid*.log
 
 # Local environment and signing material.
 .env

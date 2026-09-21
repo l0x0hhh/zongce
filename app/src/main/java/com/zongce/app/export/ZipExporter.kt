@@ -2,7 +2,6 @@
 package com.zongce.app.export
 
 import android.content.Context
-import com.zongce.app.core.AcademicYear
 import com.zongce.app.core.FileNameRule
 import com.zongce.app.core.ImageTools
 import com.zongce.app.data.PhotoStore
@@ -39,10 +38,11 @@ object ZipExporter {
     /** 每张照片在包内的相对路径（txt 里引用、命名去重共用） */
     private class Placed(val wuyu: String, val entry: String)
 
+    /** [targetYear] 必填：导出档位不能有默认值，否则会随"今天"静默滑动。 */
     fun export(
         context: Context,
         items: List<RecordWithPhotos>,
-        targetYear: String = AcademicYear.targetLabel(),
+        targetYear: String,
         onProgress: (done: Int, total: Int) -> Unit
     ): ExportResult {
         val photoStore = PhotoStore(context)

@@ -19,30 +19,46 @@ object ExportCheck {
         val message: String
     )
 
-    /** 只检查目标评价学年，其他学年记录由导出流程过滤并提示。 */
-    fun run(
-        items: List<RecordWithPhotos>,
-        targetYear: String = AcademicYear.targetLabel(),
-        photoExists: (String) -> Boolean = { true }
-    ): List<Issue> {
-        val issues = mutableListOf<Issue>()
-        val excludedCount = items.count {
-            it.record.awardDate.isNotBlank() &&
-                AcademicYear.check(it.record.awardDate).status != AcademicYear.Status.OUT_OF_RANGE &&
-                !AcademicYear.belongsTo(it.record.awardDate, targetYear)
-        }
-        val targetItems = items.filter {
+    /**
+     * 本次导出范围内的记录。
+     * 日期缺失或格式非法的记录留在范围内（交给字段检查拦下），跨学年的排除在外。
+     * 导出与体检共用这一份判定 —— 同一个谓词各写一遍，迟早会漂移。
+     */
+    fun targetItems(items: List<RecordWithPhotos>, targetYear: String): List<RecordWithPhotos> =
+        items.filter {
             it.record.awardDate.isBlank() ||
                 AcademicYear.check(it.record.awardDate).status == AcademicYear.Status.OUT_OF_RANGE ||
                 AcademicYear.belongsTo(it.record.awardDate, targetYear)
         }
 
-        if (targetItems.isEmpty()) {
+    /** 属于其他评价学年、本次会被过滤掉的记录数。 */
+    fun excludedCount(items: List<RecordWithPhotos>, targetYear: String): Int =
+        items.count {
+            it.record.awardDate.isNotBlank() &&
+                AcademicYear.check(it.record.awardDate).status != AcademicYear.Status.OUT_OF_RANGE &&
+                !AcademicYear.belongsTo(it.record.awardDate, targetYear)
+        }
+
+    /**
+     * 体检目标评价学年。
+     * [targetYear] 必须由调用方明确传入：它一旦有默认值，就会随"今天"静默滑动，
+     * 让调用方（尤其是测试）在不自知的情况下换了一个档位。
+     */
+    fun run(
+        items: List<RecordWithPhotos>,
+        targetYear: String,
+        photoExists: (String) -> Boolean = { true }
+    ): List<Issue> {
+        val issues = mutableListOf<Issue>()
+        val excluded = excludedCount(items, targetYear)
+        val targets = targetItems(items, targetYear)
+
+        if (targets.isEmpty()) {
             issues += Issue(Level.BLOCK, 0L, "还没有任何记录，没有东西可以导出。")
             return issues
         }
 
-        targetItems.forEach { item ->
+        targets.forEach { item ->
             val r = item.record
 
             // 1) 缺关键字段 → 无法生成文件名
@@ -80,7 +96,7 @@ object ExportCheck {
         }
 
         // 4) 待补充字段 → 只提醒
-        val incomplete = targetItems.count { it.record.missingFields().isNotEmpty() }
+        val incomplete = targets.count { it.record.missingFields().isNotEmpty() }
         if (incomplete > 0) {
             issues += Issue(
                 Level.WARN, 0L,
@@ -89,7 +105,7 @@ object ExportCheck {
         }
 
         // 5) 边界日 → 只提醒
-        val boundary = targetItems.filter {
+        val boundary = targets.filter {
             it.record.awardDate.isNotBlank() &&
                 AcademicYear.check(it.record.awardDate).status == AcademicYear.Status.BOUNDARY
         }
@@ -100,10 +116,10 @@ object ExportCheck {
             )
         }
 
-        if (excludedCount > 0) {
+        if (excluded > 0) {
             issues += Issue(
                 Level.WARN, 0L,
-                "另有 $excludedCount 条记录属于其他评价学年，已从本次 $targetYear 导出中过滤。"
+                "另有 $excluded 条记录属于其他评价学年，已从本次 $targetYear 导出中过滤。"
             )
         }
 
