@@ -124,6 +124,17 @@ docs/adr/                  # 架构决策记录
 - **签名 Secrets**：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。密钥只放 GitHub Actions Secrets，不提交仓库（`*.keystore` 已在 `.gitignore` 中）。
 - **国内镜像（可选）**：再配 1 个 Secret `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects`）和 2 个 Variables `GITEE_OWNER` / `GITEE_REPO`，发版时会额外把 APK 传到 Gitee Release、并把 `latest.json` 更新到镜像仓库的 raw 固定路径。**三项缺任一项，镜像整段自动跳过**，GitHub 侧的发布不受影响。镜像仓库需先有分支（网页上建一个文件即可）。
 - **同步到产品页（可选）**：配 1 个 Secret `LANDING_TOKEN`（对落地页仓库 `l0x0hhh/JICUN` 有 `contents:write` 的令牌；仓库名可用 Variable `LANDING_REPO` 覆盖），发版时会把 APK 覆盖到落地页的 `public/downloads/jicun.apk`，Netlify 随之重新部署。**没配就跳过**，落地页仓库自己有个每天拉取最新包的兜底 workflow。
+
+  > ⚠️ **这个跳过是静默的**：流水线整体仍显示 `success`、正式包照常发出，只有产品页会停在旧包（用户从宣传页下载拿到的是旧版本）。**发版后请在 Actions 里确认第 14 步 `Publish the APK to the landing page` 是 success 而不是 skipped** —— v1.3.0 就踩过这个坑。
+  >
+  > **怎么建令牌**（推荐 fine-grained，最小权限）：GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token；
+  > Repository access 选 **Only select repositories**，只勾 `l0x0hhh/JICUN`；
+  > Permissions → Repository permissions → 把 **Contents 设为 Read and write**；
+  > 生成后立刻复制（只显示一次，刷新页面就没了）。
+  >
+  > **怎么配**：本仓库 → Settings → Secrets and variables → Actions → **New repository secret** → Name 填 `LANDING_TOKEN`，值粘贴令牌。`LANDING_REPO` 不用配（默认就是 `l0x0hhh/JICUN`）。
+  >
+  > 配完后**下次发版**才会走这一步（v1.3.0 的产品页是手动补的，无需重跑）。
 - 未配置签名参数时本地仍可构建 release，只是产物未签名。
 
 ## 发布流程
