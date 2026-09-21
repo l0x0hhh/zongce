@@ -30,6 +30,23 @@
             </intent-filter>
         </activity>
 
+        <!--
+            桌面小组件：只承载「拍照 / 相册」两个入口，点击后把带 action 的 Intent 交给
+            MainActivity（singleTop），由它转发给录入页。组件本身不碰数据库、不保存照片。
+            exported=false 沿用 AppWidget 的常规写法：广播由系统发出，无需对外暴露。
+        -->
+        <receiver
+            android:name=".widget.JicunWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/jicun_widget_info" />
+        </receiver>
+
         <!-- 拍照临时文件 & 导出 ZIP 分享 -->
         <provider
             android:name="androidx.core.content.FileProvider"

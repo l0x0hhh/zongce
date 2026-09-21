@@ -6,16 +6,22 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.1.0-dev` |
+| 版本号 | `1.2.0-dev` |
 | 版本状态 | 开发中 |
 | 最近更新 | 2026-09-21 |
-| 最近文档提交 | `70b296a` |
-| Android 应用版本 | `versionName 1.1.0` / `versionCode 2` |
+| 最近文档提交 | `57f155a` |
+| Android 应用版本 | `versionName 1.2.0` / `versionCode 2` |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 干净，与 `origin/main` 同步（本批已提交并推送：`70b296a`） |
+| 工作区状态 | 本轮改动待提交：桌面小组件实现（见下方首条） |
 
 ## 本版本更新
+
+- **实现桌面小组件本体**（此前只有入口协议，见「已知未完成」）：新增 `widget/JicunWidget.kt`（Glance 界面）+ `widget/JicunWidgetReceiver.kt` + `res/xml/jicun_widget_info.xml`，在 `AndroidManifest.xml` 注册 `exported="false"` 的 receiver。组件是一张 3×2 的白色卡片：标题行（logo + 「暨存」）点开正常启动 App，「拍照」直接进系统相机、「相册」直接进图片选择器。点击只发带 action 的显式 Intent（`WIDGET_CAPTURE` / `WIDGET_PICK_PHOTOS`），拍照与相册逻辑仍由 `MainActivity` + `CaptureScreen` 处理，组件不碰数据库、不保存照片——与 ADR-0001 的约定一致。
+  - 两处必须注意的实现细节：**入口 Intent 必须带 `FLAG_ACTIVITY_NEW_TASK`**（否则从桌面点开会另起一个 App 实例，而不是走 `singleTop` 的 `onNewIntent`）；**两个 action 必须是不同的字符串**（`PendingIntent` 的相等性只看 action/组件/requestCode，不看 extras，action 相同会互相覆盖，两个按钮就都变成同一个入口）。
+  - 组件里**不要直接引用 `drawable/logo.png`**（1254×1254 / 1.1MB）：桌面渲染由 launcher 进程解码，会白吃几 MB 内存。新增 `drawable-xxhdpi/widget_logo.png`（72px / 7.5KB）专供组件标题行。两枚按钮图标是自带填色的矢量图（`ic_widget_camera.xml` 白、`ic_widget_gallery.xml` 主色）。
+  - 新增依赖 `androidx.glance:glance-appwidget:1.1.0`。**体积代价已实测**：未混淆的 release 包从 11.41MB → 12.87MB（+1.46MB / +13%，对比线上 `jicun-1.1.0.apk`）；debug 包涨幅更大（约 +5.6MB），因为 debug 不跑 `optimizeReleaseResources`。结论是代价可接受，故沿用 Glance 而不是手写 RemoteViews。
+  - 验证方式：`:app:testDebugUnitTest --rerun` **24 个用例全绿**（6+3+3+12）；`assembleDebug` / `assembleRelease` 均 `BUILD SUCCESSFUL`；用 `aapt2 dump xmltree` 反查 APK，确认 `JicunWidgetReceiver`（`exported=false` + `APPWIDGET_UPDATE` + `android.appwidget.provider` meta-data）与 `res/xml/jicun_widget_info.xml`（180×110dp、3×2 格、`updatePeriodMillis=0`）都正确进包。**仍未做的是真机/模拟器上把组件真正拖到桌面看渲染效果**。
 
 - 新增 MIT 许可证（`LICENSE`，Copyright (c) 2026 l0x0hhh），README 的 License 章节同步改为 MIT；落地页底栏的「许可证」入口指向该文件。
 - 重写 `README.md` 与 `README.en.md`：按代码事实校正表述，补齐导出包结构、文件名约束、权限清单、更新流程、CI/Release 流水线、项目结构和已知未完成项。

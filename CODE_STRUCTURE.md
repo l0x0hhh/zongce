@@ -16,6 +16,9 @@ MainActivity
           └── ExportScreen      校验并导出材料包
     └── UpdateDialog            更新检查、下载进度和安装入口
 
+JicunWidgetReceiver（系统广播）
+    └── JicunWidget             Glance 组件界面：发 Intent 给 MainActivity，不碰数据库
+
 AppViewModel
     ├── AwardDao               读写 Room 数据库
     ├── PhotoStore             管理本地证明照片
@@ -30,9 +33,21 @@ AppViewModel
 | --- | --- |
 | `app/src/main/java/com/zongce/app/MainActivity.kt` | Android Activity、Compose 根入口、页面导航和组件入口路由 |
 | `app/src/main/java/com/zongce/app/ZongceApp.kt` | Application 类 |
-| `app/src/main/java/com/zongce/app/WidgetActions.kt` | 桌面组件与主页面之间的入口协议（仅动作定义，组件本体尚未实现，见 ADR-0001） |
+| `app/src/main/java/com/zongce/app/WidgetActions.kt` | 桌面组件与主页面之间的入口协议（动作常量 + `isEntryAction`）。组件只发 action 字符串，业务一律由主 Activity 承接 |
 
 新增页面、调整页面路由，或接收新的外部入口动作时，优先检查 `MainActivity.kt`。
+
+## 桌面小组件
+
+| 文件 | 职责 |
+| --- | --- |
+| `app/src/main/java/com/zongce/app/widget/JicunWidget.kt` | 组件界面（Glance）：标题行 + 「拍照 / 相册」两个入口。只构造带 action 的显式 Intent，不加 NEW_TASK 会另起实例，故已加 |
+| `app/src/main/java/com/zongce/app/widget/JicunWidgetReceiver.kt` | `GlanceAppWidgetReceiver`，把组件挂到系统的 `APPWIDGET_UPDATE` 广播上 |
+| `app/src/main/res/xml/jicun_widget_info.xml` | 组件规格：3×2 格（约 180×110dp）、可伸缩、`updatePeriodMillis=0`（内容是静态入口，无需轮询） |
+
+改组件外观、尺寸或入口按钮时只动 `JicunWidget.kt` 与 `jicun_widget_info.xml`；改点击后的行为一律回到 `MainActivity.kt` + `CaptureScreen.kt`——不要在组件里复制拍照/相册逻辑（见 ADR-0001）。
+
+组件用的两枚图标是自带填色的矢量图（`ic_widget_camera.xml` 白色、`ic_widget_gallery.xml` 主色）；`drawable-xxhdpi/widget_logo.png` 是 logo 的 72px 缩小版，专门给组件标题行用——**别直接引用 `drawable/logo.png`**（1254×1254 / 1.1MB，桌面渲染时会按原图解码，白吃几 MB 内存）。
 
 ## 核心规则与图片处理
 
@@ -133,6 +148,6 @@ AppViewModel
 - 修改学年判断：`AcademicYear.kt` → `AcademicYearTest.kt` → `ExportCheck.kt`。
 - 修改导出目录、文件名或 ZIP 内容：`FileNameRule.kt` / `ZipExporter.kt` → `ExportCheck.kt` → `ExportScreen.kt`。
 - 修改更新逻辑或安装流程：`UpdateChecker.kt` → `AppViewModel.kt` → `UpdateDialog.kt`。
-- 接入桌面组件本体：`WidgetActions.kt` → `MainActivity.kt` → `docs/adr/0001-widget-entry-routing.md`。
+- 修改桌面小组件：`widget/JicunWidget.kt` / `res/xml/jicun_widget_info.xml`（外观与尺寸）→ `MainActivity.kt` / `CaptureScreen.kt`（点击后的行为）→ `docs/adr/0001-widget-entry-routing.md`。
 - 修改页面路由或外部入口：`MainActivity.kt`。
 - 修改通用 UI 控件或主题：`UiKit.kt` / `Theme.kt` / `GlassNavigationBar.kt`。

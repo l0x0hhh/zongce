@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.gradleProperty("releaseVersionCode").orElse("2").get().toInt()
-        versionName = providers.gradleProperty("versionName").orElse("1.1.0").get()
+        versionName = providers.gradleProperty("versionName").orElse("1.2.0").get()
     }
 
     // 本地没有签名参数时仍可构建 release；CI 通过 GitHub Secrets 注入正式签名。
@@ -86,6 +86,9 @@ dependencies {
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+
+    // 桌面小组件：Glance 是 Compose 风格写 AppWidget 的官方适配层（见 docs/adr/0001）。
+    implementation("androidx.glance:glance-appwidget:1.1.0")
 
     // 规则测试：覆盖学年归属和导出文件名等不依赖 Android UI 的行为。
     testImplementation("junit:junit:4.13.2")

@@ -100,7 +100,8 @@ $env:GRADLE_USER_HOME = "<仓库根目录>\.gradle-user"   # 可选：本仓库�
 ```
 app/src/main/java/com/zongce/app/
 ├── MainActivity.kt        # 单 Activity、Compose 导航、更新弹窗入口
-├── WidgetActions.kt       # 桌面组件入口协议（仅动作定义，见下方"已知未完成"）
+├── WidgetActions.kt       # 桌面组件入口协议（动作常量 + isEntryAction）
+├── widget/                # 桌面小组件本体（Glance 界面 + AppWidget 接收器）
 ├── core/                  # 纯 Kotlin 规则：学年归属、文件名、图片处理
 ├── data/                  # Room 实体/DAO/数据库 + 私有目录照片仓库
 ├── export/                # 导出前体检 + ZIP 打包
@@ -123,13 +124,13 @@ docs/adr/                  # 架构决策记录
 
 ## 已知未完成
 
-- **桌面小组件尚未实现**：`WidgetActions` + `MainActivity` 只完成了入口协议与路由（收到 `WIDGET_CAPTURE` / `WIDGET_PICK_PHOTOS` 就跳录入页），真正的 AppWidget 还需要按 ADR-0001 注册 receiver 并接入 Glance。
-- **真机验证未做**：相机、图片选择器、图片导入、ZIP 分享和各 Android 版本兼容性仍待在真机或模拟器上验证。单元测试只覆盖纯规则（学年归属、文件名生成、导出体检）。
+- **桌面小组件已接入**：桌面长按 → 小组件里可以添加「暨存 · 快速录入」（3×2 格），点「拍照」直接进系统相机、点「相册」直接进图片选择器，标题行点开则是正常启动 App。组件只发 Intent，拍照与相册逻辑仍由 `MainActivity` + `CaptureScreen` 处理（见 [ADR-0001](docs/adr/0001-widget-entry-routing.md)）。
+- **真机验证未做**：相机、图片选择器、图片导入、ZIP 分享、小组件上桌和各 Android 版本兼容性仍待在真机或模拟器上验证。单元测试只覆盖纯规则（学年归属、文件名生成、导出体检、版本比较）。
 - `isMinifyEnabled = false`，release 未开 R8 混淆压缩。
 
 ## 当前版本
 
-`1.1.0-dev`（应用 `versionName 1.1.0` / `versionCode 2`）。版本与开发会话记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
+`1.2.0-dev`（应用 `versionName 1.2.0` / `versionCode 2`）。版本与开发会话记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
 
 ## 反馈与贡献
 

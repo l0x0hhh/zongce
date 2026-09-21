@@ -100,7 +100,8 @@ $env:GRADLE_USER_HOME = "<repo-root>\.gradle-user"   # optional: repo-local, pre
 ```
 app/src/main/java/com/zongce/app/
 ├── MainActivity.kt        # single activity, Compose navigation, update dialog entry
-├── WidgetActions.kt       # home-screen widget entry protocol (actions only; see "Known gaps")
+├── WidgetActions.kt       # home-screen widget entry protocol (actions + isEntryAction)
+├── widget/                # the widget itself (Glance UI + AppWidget receiver)
 ├── core/                  # pure Kotlin rules: academic year, file names, image processing
 ├── data/                  # Room entities, DAO, database, private photo store
 ├── export/                # pre-export validation and ZIP packaging
@@ -123,13 +124,13 @@ See [CODE_STRUCTURE.md](CODE_STRUCTURE.md) for per-module ownership and [AGENTS.
 
 ## Known gaps
 
-- **The home-screen widget is not implemented yet.** `WidgetActions` and `MainActivity` only provide the entry protocol and routing: on receiving `WIDGET_CAPTURE` or `WIDGET_PICK_PHOTOS` the app opens the entry screen. A real AppWidget still needs a manifest receiver and the Glance integration described in ADR-0001.
-- **No device verification yet.** Camera capture, photo picking, image import, ZIP sharing, and Android version compatibility still need verification on a real device or emulator. Unit tests cover pure rules only (academic-year classification, file-name generation, export check).
+- **The home-screen widget is wired up.** Long-press the home screen and add "暨存 · 快速录入" (3×2 cells): "拍照" jumps straight into the system camera, "相册" into the photo picker, and tapping the title opens the app normally. The widget only sends an Intent — capture and picking stay in `MainActivity` + `CaptureScreen` (see [ADR-0001](docs/adr/0001-widget-entry-routing.md)).
+- **No device verification yet.** Camera capture, photo picking, image import, ZIP sharing, placing the widget, and Android version compatibility still need verification on a real device or emulator. Unit tests cover pure rules only (academic-year classification, file-name generation, export check, version comparison).
 - `isMinifyEnabled = false`, so release builds are not yet shrunk or obfuscated by R8.
 
 ## Current version
 
-`1.1.0-dev` (app `versionName 1.1.0` / `versionCode 2`). See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session history.
+`1.2.0-dev` (app `versionName 1.2.0` / `versionCode 2`). See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session history.
 
 ## Feedback and contributions
 
