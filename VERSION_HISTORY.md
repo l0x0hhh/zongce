@@ -40,6 +40,12 @@
 - `ExportCheckTest` 新增 2 个用例（总数 12）：选填字段只提醒不阻塞、跨学年记录只提示且过滤计数正确。
 - 修掉 release 流水线的**签名路径缺陷**：`app/build.gradle.kts` 读 `signingStoreFile` 用的是模块级 `file()`，**相对路径按 `app/` 模块目录解析**，而 `.github/workflows/release.yml` 是把解出来的 keystore 放在**仓库根**的 → CI 必然报 `.../app/release.keystore not found`。改用 `rootProject.file()`：相对路径=仓库根、绝对路径原样使用，两种写法都对，本地与 CI 语义一致。已做修复前/修复后的对照复现（修复前同一命令失败、修复后通过）。
 - 更新检查改为**双源取较新版本**：同时问镜像与 GitHub，取版本号更高的那个。此前是"镜像可达即权威"，镜像一旦忘了同步，用户会被**永久卡在旧版本**、再也收不到更新；现在镜像退化成"可选加速"，两边只要有一边通就能检查（两边都失败才报错，并把两边原因都带上）。同时：`apkUrl` 强制 **HTTPS**（targetSdk 35 禁明文，否则下载会被系统拦掉、报错还很难懂）；`openConnection` 的报错文案改用调用方标签（此前读**镜像**失败也报「GitHub 返回 HTTP xxx」，会把排查带偏）。新增 `UpdateCheckerTest` 12 个用例覆盖版本比较（含 `1.10 > 1.9` 这种字符串比较会判反的情况）、双源择优与 HTTPS 校验；本地 `:app:testDebugUnitTest` 共 **24 个用例全绿**。
+- **国内镜像自动化（Gitee）已写进 `release.yml`**，三步：① 解析镜像分支、算出清单地址写进 `$GITHUB_ENV`（**任何问题只警告不失败**，镜像不该拦住正式发布）；② 把 APK 作为 Gitee Release 附件上传（先按 tag 复用已有 release、同名附件先删 → 可重复执行；multipart 字段名固定为 `file`）；③ 用 `git push` 更新镜像仓库的 `latest.json`，并**回读校验**确认匿名可读且版本号正确。构建时用 `-PupdateManifestUrl` 把清单地址编译进 APK（未配镜像时为空串 → 走 GitHub 回退）。
+  - **镜像三步刻意排在 `Create GitHub Release` 之后**：镜像失败只表现为"GitHub 成功、镜像没同步"，看得见，且不会丢正式包。
+  - 需要 1 个 Secret（`GITEE_TOKEN`）+ 2 个 Variables（`GITEE_OWNER` / `GITEE_REPO`），**缺任一项整段自动跳过**，下一次发版行为与 v1.1.0 完全一致。
+  - `latest.json` 用 `git push` 更新而不是 contents API：语义明确，没有"新建还是更新、要不要 sha"的歧义，镜像仓库只有一个 JSON，克隆成本可忽略。
+  - **已做的静态校验**：YAML 解析通过、9 个 `run` 脚本逐个过 `bash -n`、5 个 jq 表达式用样本数据实测（含空仓库 / release 不存在 / 同名附件三个边界）。**未在真实 Gitee 上跑过**——需要镜像仓库先有分支 + 令牌到位。
+  - 为什么清单必须放 raw 固定路径：该 URL 会被**编译进 APK**，而 release 附件 URL 带 tag、每版都变，所以清单不能放附件。
 
 - 初始化 Android 项目 Git 仓库并推送到 GitHub。
 - 增加中英文项目说明：`README.md`、`README.en.md`。

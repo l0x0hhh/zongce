@@ -1,4 +1,11 @@
 # Version tags build a signed APK and publish a GitHub Release.
+#
+# 如果配了国内镜像（Gitee），还会同步一份：APK 作为 Gitee Release 附件，
+# latest.json 提交到镜像仓库主分支供 raw 直链读取（应用内的更新检查会读它）。
+# 需要 3 个仓库配置，缺任何一个都会自动跳过镜像、只发 GitHub：
+#   Secret    GITEE_TOKEN   —— Gitee 私人令牌，勾 projects（仓库读写）权限
+#   Variable  GITEE_OWNER   —— Gitee 用户名，例如 l0x0hhh
+#   Variable  GITEE_REPO    —— Gitee 镜像仓库名，例如 Jicun
 name: Release
 
 on:
@@ -19,6 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+      GITEE_REPO: ${{ vars.GITEE_REPO }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -28,6 +39,24 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
+      # 解析镜像分支并算出清单地址，写进 $GITHUB_ENV 给后面的步骤用。
+      # 这里的任何问题都只警告、不失败：镜像不该拦住正式的 GitHub 发布。
+      - name: Resolve mirror settings
+        if: env.GITEE_TOKEN != '' && env.GITEE_OWNER != '' && env.GITEE_REPO != ''
+        run: |
+          set -uo pipefail
+          API="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}"
+          BRANCH=$(curl -s "${API}?access_token=${GITEE_TOKEN}" | jq -r '.default_branch // empty')
+          if [ -z "$BRANCH" ]; then
+            echo "::warning::Gitee 镜像仓库 ${GITEE_OWNER}/${GITEE_REPO} 还没有分支。请在网页上创建一个文件（例如 latest.json）产生首个提交后重跑。本次跳过镜像同步。"
+            exit 0
+          fi
+          MANIFEST="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${BRANCH}/latest.json"
+          echo "MIRROR_BRANCH=${BRANCH}" >> "$GITHUB_ENV"
+          echo "MIRROR_MANIFEST_URL=${MANIFEST}" >> "$GITHUB_ENV"
+          echo "镜像分支 ${BRANCH}，清单地址 ${MANIFEST}"
+
       - name: Decode signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -48,14 +77,103 @@ jobs:
         run: chmod +x gradlew
       - name: Run tests
         run: ./gradlew test --no-daemon
+
+      # 清单地址要编译进 APK（BuildConfig.UPDATE_MANIFEST_URL），所以必须在这一步就确定。
+      # 没配镜像时它是空串，应用会走 GitHub Release 回退。
       - name: Assemble signed release APK
-        run: ./gradlew :app:assembleRelease --no-daemon -PversionName="${RELEASE_VERSION#v}" -PreleaseVersionCode="$((1000000 + GITHUB_RUN_NUMBER))"
+        run: |
+          ./gradlew :app:assembleRelease --no-daemon \
+            -PversionName="${RELEASE_VERSION#v}" \
+            -PreleaseVersionCode="$((1000000 + GITHUB_RUN_NUMBER))" \
+            -PupdateManifestUrl="${MIRROR_MANIFEST_URL:-}"
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk "jicun-${RELEASE_VERSION#v}.apk"
+
+      # GitHub 发布放在镜像之前：镜像那几步万一失败，正式包也已经发出去了，
+      # 失败只会表现为"GitHub 成功、镜像没同步"，看得见、也不丢东西。
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+          tag_name: ${{ env.RELEASE_TAG }}
           name: 暨存 ${{ env.RELEASE_VERSION }}
           generate_release_notes: true
           files: jicun-*.apk
+
+      # ---------- 国内镜像（Gitee）----------
+      # 顺序刻意是「先附件、后清单」：清单一旦上线就会被用户读到，
+      # 反过来会出现一段"用户点了更新却 404"的窗口。
+      - name: Upload APK to the Gitee mirror
+        if: env.MIRROR_BRANCH != ''
+        run: |
+          set -euo pipefail
+          API="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}"
+          APK="jicun-${RELEASE_VERSION#v}.apk"
+
+          # 同名 release 就复用，保证本步骤可以重复执行（重跑流水线不会 400）
+          REL_ID=$(curl -s -H "Content-Type: application/json" \
+            "${API}/releases/tags/${RELEASE_TAG}?access_token=${GITEE_TOKEN}" | jq -r '.id // empty' || true)
+          if [ -z "$REL_ID" ]; then
+            REL_ID=$(curl -s -X POST "${API}/releases" \
+              -d "access_token=${GITEE_TOKEN}" \
+              -d "tag_name=${RELEASE_TAG}" \
+              -d "name=暨存 ${RELEASE_VERSION#v}" \
+              -d "target_commitish=${MIRROR_BRANCH}" \
+              -d "body=国内镜像。对应 GitHub Release：https://github.com/l0x0hhh/zongce/releases/tag/${RELEASE_TAG}" \
+              | jq -r '.id // empty')
+          fi
+          if [ -z "$REL_ID" ]; then
+            echo "::error::Gitee 上既找不到也无法创建 release ${RELEASE_TAG}"
+            exit 1
+          fi
+          echo "Gitee release id = ${REL_ID}"
+
+          # 同名附件先删，避免重复上传（Gitee 不会自动覆盖）
+          curl -s "${API}/releases/${REL_ID}/attach_files?access_token=${GITEE_TOKEN}" \
+            | jq -r --arg n "$APK" '.[] | select(.name == $n) | .id' \
+            | while read -r fid; do
+                [ -n "$fid" ] && curl -s -o /dev/null -X DELETE \
+                  "${API}/releases/${REL_ID}/attach_files/${fid}?access_token=${GITEE_TOKEN}"
+              done
+
+          # 上传：multipart/form-data，文件字段名固定为 file
+          CODE=$(curl -s -o /tmp/gitee-attach.json -w '%{http_code}' -X POST \
+            "${API}/releases/${REL_ID}/attach_files" \
+            -F "access_token=${GITEE_TOKEN}" \
+            -F "file=@${APK}")
+          echo "上传返回 HTTP ${CODE}"
+          cat /tmp/gitee-attach.json
+          [ "$CODE" = "201" ] || { echo "::error::向 Gitee 上传 ${APK} 失败"; exit 1; }
+
+      # 清单用 git push 更新（而不是 contents API）：语义明确、没有"新建还是更新、要不要 sha"的歧义，
+      # 镜像仓库只有一个 JSON，克隆成本可以忽略。
+      - name: Publish the mirror manifest
+        if: env.MIRROR_BRANCH != ''
+        run: |
+          set -euo pipefail
+          V="${RELEASE_VERSION#v}"
+          APK="jicun-${V}.apk"
+          APK_URL="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/${RELEASE_TAG}/${APK}"
+          WORK="$RUNNER_TEMP/gitee-mirror"
+
+          git clone --depth 1 \
+            "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" "$WORK"
+          cat > "$WORK/latest.json" <<JSON
+          {
+            "version": "${V}",
+            "title": "暨存 ${V}",
+            "notes": "国内镜像下载；GitHub 备份见 https://github.com/l0x0hhh/zongce/releases/tag/${RELEASE_TAG}",
+            "apkUrl": "${APK_URL}"
+          }
+          JSON
+          git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
+            commit -q -am "release: 暨存 ${V}"
+          git -C "$WORK" push -q origin "HEAD:${MIRROR_BRANCH}"
+
+          # 回读校验：确认清单真的能被匿名读到、且版本号对得上。
+          # 国内镜像的全部价值就是"用户能读到它"，没校验过的写入不算写完。
+          sleep 5
+          FETCHED=$(curl -s -f "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json")
+          echo "$FETCHED"
+          echo "$FETCHED" | grep -q "\"${V}\"" \
+            || { echo "::error::清单回读校验失败：读到的内容里没有版本号 ${V}"; exit 1; }
+          echo "镜像清单已就绪：https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json"
