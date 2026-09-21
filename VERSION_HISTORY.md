@@ -9,13 +9,18 @@
 | 版本号 | `1.1.0-dev` |
 | 版本状态 | 开发中 |
 | 最近更新 | 2026-09-21 |
-| 最近文档提交 | `9e58c24` |
+| 最近文档提交 | `9886b82` |
 | Android 应用版本 | `versionName 1.1.0` / `versionCode 2` |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
+| 工作区状态 | 干净，与 `origin/main` 同步 |
 
 ## 本版本更新
 
+- 新增 MIT 许可证（`LICENSE`，Copyright (c) 2026 l0x0hhh），README 的 License 章节同步改为 MIT；落地页底栏的「许可证」入口指向该文件。
+- 重写 `README.md` 与 `README.en.md`：按代码事实校正表述，补齐导出包结构、文件名约束、权限清单、更新流程、CI/Release 流水线、项目结构和已知未完成项。
+  - 校正项：应用显示名为「暨存」，仓库/包名为 `zongce`（`com.zongce.app`）；学年校验只在日期格式错误时阻塞，合法的跨学年记录在导出时过滤并提示；隐私表述改为如实说明系统云备份（`allowBackup="true"`）可能带走数据库与照片副本。
+  - 新增章节：导出的材料包长什么样、已知未完成（桌面组件未实现、无真机验证、未开 R8）。
 - 增加 GitHub Actions CI、标签发布和签名 Release 工作流。
 - 增加国内镜像更新清单优先、GitHub Release 回退的更新源逻辑。
 
@@ -27,11 +32,12 @@
 
 ## 当前功能基线
 
-- 按五育分类管理获奖记录。
-- 拍摄或导入证书照片，并在设备本地保存。
+- 按五育分类管理获奖记录（德育 / 智育 / 体育 / 美育 / 劳育）。
+- 拍摄或导入证书照片，并在设备本地保存；原图永久保留，按内容哈希命名。
 - 使用 Room 保存获奖记录和照片关联信息。
-- 校验获奖时间所属学年、必填字段和证明材料完整性。
-- 按五育目录导出 ZIP 材料包，并生成规范化文件名。
+- 校验获奖时间所属学年、必填字段和证明材料完整性（阻断项 + 提醒项）。
+- 按五育目录导出 ZIP 材料包，生成规范化文件名与 `填报核对.txt` 清单。
+- 应用内检查更新：镜像 `latest.json` 优先，GitHub Release 回退。
 - 支持记录查看、编辑和删除。
 
 ## 验证状态
@@ -39,6 +45,7 @@
 - [x] Git 仓库初始化完成。
 - [x] `main` 分支已推送到 GitHub。
 - [x] README、英文 README 和代码结构文档已完成。
+- [x] MIT 许可证与中英文 README 已同步到远端。
 - [x] 文档执行 `git diff --check` 通过。
 - [ ] Android Debug APK 构建验证。
 - [ ] JVM 单元测试验证。
@@ -46,16 +53,9 @@
 
 ## 当前未提交改动
 
-以下文件在记录本版本时已经存在未提交改动。后续会话必须先确认这些改动属于哪个功能，再决定是否提交：
+无。工作区干净，已与 `origin/main` 同步。
 
-- `app/src/main/java/com/zongce/app/MainActivity.kt`
-- `app/src/main/java/com/zongce/app/export/ExportCheck.kt`
-- `app/src/main/java/com/zongce/app/ui/AppViewModel.kt`
-- `app/src/main/java/com/zongce/app/ui/CaptureScreen.kt`
-- `app/src/main/java/com/zongce/app/ui/EntryScreen.kt`
-- `app/src/main/java/com/zongce/app/ui/ListScreen.kt`
-- `app/src/main/java/com/zongce/app/ui/UpdateDialog.kt`
-- `app/src/main/java/com/zongce/app/update/`
+早先的记录卡曾把 `MainActivity.kt`、`ExportCheck.kt`、`AppViewModel.kt`、`CaptureScreen.kt`、`EntryScreen.kt`、`ListScreen.kt`、`UpdateDialog.kt` 和 `update/` 列为未提交改动，这些文件已在提交 `9e8686d` 中入库。
 
 ## 后续会话规则
 

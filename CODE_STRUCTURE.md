@@ -8,35 +8,39 @@
 
 ```text
 MainActivity
+    ├── WidgetActions           桌面组件入口协议（动作常量 + 是否为入口动作的判断）
     └── App / Compose Navigation
-          ├── CaptureScreen     拍摄或导入证书
+          ├── CaptureScreen     拍摄、导入、最近记录与更新入口
           ├── EntryScreen       新增或编辑获奖记录
-          ├── ListScreen        查看和管理记录
+          ├── ListScreen        查看、筛选和管理记录
           └── ExportScreen      校验并导出材料包
+    └── UpdateDialog            更新检查、下载进度和安装入口
 
 AppViewModel
     ├── AwardDao               读写 Room 数据库
-    ├── PhotoStore              管理本地证明照片
-    ├── ExportCheck             导出前校验
-    └── ZipExporter             生成 ZIP 材料包
+    ├── PhotoStore             管理本地证明照片
+    ├── ExportCheck            导出前校验
+    ├── ZipExporter            生成 ZIP 材料包
+    └── UpdateChecker          读取更新清单并下载 APK
 ```
 
 ## 入口与导航
 
 | 文件 | 职责 |
 | --- | --- |
-| `app/src/main/java/com/zongce/app/MainActivity.kt` | Android Activity、Compose 根入口和页面导航 |
+| `app/src/main/java/com/zongce/app/MainActivity.kt` | Android Activity、Compose 根入口、页面导航和组件入口路由 |
 | `app/src/main/java/com/zongce/app/ZongceApp.kt` | Application 类 |
+| `app/src/main/java/com/zongce/app/WidgetActions.kt` | 桌面组件与主页面之间的入口协议（仅动作定义，组件本体尚未实现，见 ADR-0001） |
 
-新增页面或调整页面路由时，优先检查 `MainActivity.kt`。
+新增页面、调整页面路由，或接收新的外部入口动作时，优先检查 `MainActivity.kt`。
 
 ## 核心规则与图片处理
 
 | 文件 | 职责 |
 | --- | --- |
-| `core/AcademicYear.kt` | 学年归属、边界日期和超出范围判断 |
-| `core/FileNameRule.kt` | 导出图片文件名生成、清理和长度限制 |
-| `core/ImageTools.kt` | JPEG 转换、EXIF 旋转和缩略图生成 |
+| `core/AcademicYear.kt` | 学年归属、边界日确认和日期格式校验（只有格式错误才阻塞录入） |
+| `core/FileNameRule.kt` | 导出图片文件名生成、非法字符清理和长度限制 |
+| `core/ImageTools.kt` | JPEG 转换、EXIF 旋转、导出压缩和缩略图生成 |
 
 修改学年窗口或文件名格式时，必须同步检查对应单元测试和导出逻辑。
 
@@ -60,24 +64,35 @@ AppViewModel
 
 导出流程的主要顺序是：筛选目标学年记录 → 运行 `ExportCheck` → 通过后调用 `ZipExporter` → 生成并分享 ZIP。
 
+## 更新层
+
+| 文件 | 职责 |
+| --- | --- |
+| `update/UpdateChecker.kt` | 读取镜像清单或 GitHub Release、比较版本号、下载 APK 并提供安装用 Uri |
+
+更新源优先级：`BuildConfig.UPDATE_MANIFEST_URL`（构建时由 Gradle 属性 `updateManifestUrl` 写入）→ 未配置或读取失败时回退 GitHub Release。改动更新逻辑时，注意同时检查下载临时文件（`.part`）与 FileProvider 路径（`res/xml/file_paths.xml`）。
+
 ## UI 与业务编排
 
 | 文件 | 职责 |
 | --- | --- |
-| `ui/AppViewModel.kt` | 记录流、照片导入、保存/删除、导出状态和业务编排 |
-| `ui/CaptureScreen.kt` | 相机拍摄和系统图片选择入口 |
+| `ui/AppViewModel.kt` | 记录流、照片导入、保存/删除、导出状态、更新状态和业务编排 |
+| `ui/CaptureScreen.kt` | 相机拍摄、系统图片选择和最近记录展示 |
 | `ui/EntryScreen.kt` | 新增、编辑获奖记录和表单校验 |
-| `ui/ListScreen.kt` | 记录列表、预览和删除入口 |
-| `ui/ExportScreen.kt` | 目标学年选择、校验反馈和导出操作 |
+| `ui/ListScreen.kt` | 记录列表、五育筛选、预览和删除入口 |
+| `ui/ExportScreen.kt` | 目标学年选择、校验反馈、导出进度和分享 |
+| `ui/UpdateDialog.kt` | 更新检查、下载进度和系统安装入口 |
+| `ui/GlassNavigationBar.kt` | 液态玻璃底部导航栏（半透明、细描边、选中态） |
+| `ui/Theme.kt` | 颜色、字体与圆角等视觉主题定义 |
 | `ui/UiKit.kt` | 公共 Compose 控件和照片缩略图 |
 
-页面显示问题优先查对应 Screen；跨页面的数据或状态问题优先查 `AppViewModel`。
+页面显示问题优先查对应 Screen；跨页面的数据、状态或导出流程问题优先查 `AppViewModel`；整体视觉调整优先查 `Theme.kt` 与 `GlassNavigationBar.kt`。
 
 ## 测试位置
 
 | 文件 | 覆盖内容 |
 | --- | --- |
-| `app/src/test/java/com/zongce/app/core/AcademicYearTest.kt` | 学年归属、边界和时间窗口 |
+| `app/src/test/java/com/zongce/app/core/AcademicYearTest.kt` | 学年归属、边界和日期格式 |
 | `app/src/test/java/com/zongce/app/core/FileNameRuleTest.kt` | 文件名格式、清理和长度限制 |
 | `app/src/test/java/com/zongce/app/export/ExportCheckTest.kt` | 导出前材料完整性检查 |
 
@@ -87,14 +102,27 @@ AppViewModel
 .\gradlew.bat test
 ```
 
-## 构建配置
+相机、图片选择器、图片导入、ZIP 分享、更新安装和不同 Android 版本兼容性仍需要在真机或模拟器上验证。
+
+## 构建配置与流水线
 
 | 文件 | 职责 |
 | --- | --- |
 | `settings.gradle.kts` | 项目名称、模块和依赖仓库配置 |
 | `build.gradle.kts` | Android、Kotlin、Compose 和 KSP 插件版本 |
-| `app/build.gradle.kts` | Android 模块配置、SDK、依赖和测试配置 |
+| `app/build.gradle.kts` | Android 模块配置、SDK、签名、依赖和测试配置 |
+| `gradle.properties` | Gradle 参数；本地签名与 `updateManifestUrl` 也通过 Gradle 属性注入 |
 | `gradle/wrapper/` | Gradle Wrapper |
+| `.github/workflows/ci.yml` | push `main` / PR：跑测试、构建 debug APK 并上传产物 |
+| `.github/workflows/release.yml` | 标签 `v*.*.*` 或手动触发：注入签名、构建并发布 GitHub Release |
+
+## 架构决策记录
+
+| 文件 | 内容 |
+| --- | --- |
+| `docs/adr/0001-widget-entry-routing.md` | 桌面组件入口统一由主 Activity 承接，以及液态玻璃导航不引入大型动效框架 |
+
+新增影响面较大的技术选择时，在本目录追加 ADR。
 
 ## 常见修改定位
 
@@ -102,5 +130,7 @@ AppViewModel
 - 修改拍照或导入照片：`CaptureScreen.kt` → `AppViewModel.kt` → `PhotoStore.kt`。
 - 修改学年判断：`AcademicYear.kt` → `AcademicYearTest.kt` → `ExportCheck.kt`。
 - 修改导出目录、文件名或 ZIP 内容：`FileNameRule.kt` / `ZipExporter.kt` → `ExportCheck.kt` → `ExportScreen.kt`。
-- 修改页面路由：`MainActivity.kt`。
-- 修改通用 UI 控件：`UiKit.kt`。
+- 修改更新逻辑或安装流程：`UpdateChecker.kt` → `AppViewModel.kt` → `UpdateDialog.kt`。
+- 接入桌面组件本体：`WidgetActions.kt` → `MainActivity.kt` → `docs/adr/0001-widget-entry-routing.md`。
+- 修改页面路由或外部入口：`MainActivity.kt`。
+- 修改通用 UI 控件或主题：`UiKit.kt` / `Theme.kt` / `GlassNavigationBar.kt`。
