@@ -47,7 +47,7 @@ jobs:
         run: |
           set -uo pipefail
           API="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}"
-          BRANCH=$(curl -s "${API}?access_token=${GITEE_TOKEN}" | jq -r '.default_branch // empty')
+          BRANCH=$(curl -s --connect-timeout 30 --retry 3 --retry-delay 5 "${API}?access_token=${GITEE_TOKEN}" | jq -r '.default_branch // empty')
           if [ -z "$BRANCH" ]; then
             echo "::warning::Gitee 镜像仓库 ${GITEE_OWNER}/${GITEE_REPO} 还没有分支。请在网页上创建一个文件（例如 latest.json）产生首个提交后重跑。本次跳过镜像同步。"
             exit 0
@@ -110,7 +110,7 @@ jobs:
           APK="jicun-${RELEASE_VERSION#v}.apk"
 
           # 同名 release 就复用，保证本步骤可以重复执行（重跑流水线不会 400）
-          REL_ID=$(curl -s -H "Content-Type: application/json" \
+          REL_ID=$(curl -s --connect-timeout 30 --retry 3 --retry-delay 5 -H "Content-Type: application/json" \
             "${API}/releases/tags/${RELEASE_TAG}?access_token=${GITEE_TOKEN}" | jq -r '.id // empty' || true)
           if [ -z "$REL_ID" ]; then
             REL_ID=$(curl -s -X POST "${API}/releases" \
@@ -174,8 +174,11 @@ jobs:
 
           # 回读校验：确认清单真的能被匿名读到、且版本号对得上。
           # 国内镜像的全部价值就是"用户能读到它"，没校验过的写入不算写完。
+          # 必须带 -L：Gitee 的 /raw/ 会 302 跳到 raw.giteeusercontent.com，
+          # 不跟跳转只会抓到那个跳转页 HTML，导致误报"内容里没有版本号"（v1.2.1 就栽在这）。
           sleep 5
-          FETCHED=$(curl -s -f "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json")
+          FETCHED=$(curl -sL -f --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 5 \
+            "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json")
           echo "$FETCHED"
           echo "$FETCHED" | grep -q "\"${V}\"" \
             || { echo "::error::清单回读校验失败：读到的内容里没有版本号 ${V}"; exit 1; }
