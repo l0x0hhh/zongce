@@ -9,11 +9,11 @@
 | 版本号 | `1.1.0-dev` |
 | 版本状态 | 开发中 |
 | 最近更新 | 2026-09-21 |
-| 最近文档提交 | `2d98af2` |
+| 最近文档提交 | `70b296a` |
 | Android 应用版本 | `versionName 1.1.0` / `versionCode 2` |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 11 个文件改动待提交（索引为空，全部未暂存），见「当前未提交改动」 |
+| 工作区状态 | 干净，与 `origin/main` 同步（本批已提交并推送：`70b296a`） |
 
 ## 本版本更新
 
@@ -65,12 +65,12 @@
       -Pkotlin.compiler.execution.strategy=in-process
   ```
   结果：`BUILD SUCCESSFUL in 2m 27s`，`26 actionable tasks: 7 executed, 19 up-to-date`（`7 executed` 说明 `compileDebugKotlin`、`compileDebugUnitTestKotlin`、`testDebugUnitTest` 确为真实执行，非 UP-TO-DATE 假绿）；证据在 `app/build/test-results/testDebugUnitTest/TEST-*.xml`，时间戳 `2026-09-21T04:17:39Z`。
-- [ ] Android Debug APK 构建验证。
+- [x] Android Debug APK 构建验证（CI）：GitHub Actions `CI #5` 对提交 `70b296a` 的 `verify` 作业全部通过，含 `Assemble debug APK` 与 `Upload debug APK`，产物 `jicun-debug-70b296a…`（16.2 MB）。这是本仓库 **CI 首次转绿** —— 此前 `CI #1`～`#4` 全部失败，且失败步骤恒为 `Run unit tests`，APK 步骤因此每次都被跳过（根因即上面那条时间依赖的红测试，修好后连带消失）。
 - [ ] 真机或模拟器功能验证。
 
-## 当前未提交改动
+## 最近一次提交
 
-11 个文件（含本记录卡），相对 `HEAD`（`2d98af2`）全部未暂存，索引为空。
+`70b296a` `feat: confirm export check warnings before packing` —— 11 个文件，`+250 / -49`，已推送至 `origin/main`。
 
 | 文件 | 改动 |
 | --- | --- |
@@ -84,14 +84,14 @@
 | `test/.../ExportCheckTest.kt` | 时间依赖修复 + 新增 2 个用例（选填字段只提醒、跨学年只提示） |
 | `CODE_STRUCTURE.md` | 同步导出流程、状态枚举与测试覆盖说明 |
 
-这批改动是一个整体（同一批体检/导出流程的修复与增强），验证已通过，适合一次性提交；不要拆成"测试文件一个提交、源码一个提交"，否则先提交的那一半无法编译。
+这一批是一个整体（同一批体检/导出流程的修复与增强），不要再拆成"测试文件一个提交、源码一个提交"——先提交的那一半无法编译。
 
 ### 已知待处理
 
 - 两处既有的编译告警（非本批引入，`compileDebugKotlin` 输出）：`ExportScreen.kt` 的 `LinearProgressIndicator(progress = …)` 已废弃（应改用接收 lambda 的重载）；`GlassNavigationBar.kt` 的 `Icons.Filled.List` 已废弃（应改用 `Icons.AutoMirrored.Filled.List`）。
 - `ExportScreen` 顶部的「$targetYear · $selectedCount 条记录」仍用 `belongsTo` 计数，与 `ExportCheck.targetItems()` 的判定在「日期缺失或非法」时不一致。这类记录会被体检阻断，所以目前只影响显示，待统一。
 - `gradle.properties` 的 `android.overridePathCheck=true` 是当年中文路径时期的产物，AGP 每次构建都会警告它「experimental」。路径已是纯 ASCII，这项可以删掉。
-- 本批只跑过 JVM 单元测试，未构建 APK、未上真机；界面新增的确认页还需要在设备上过一遍。
+- 界面新增的提醒确认页还没上真机/模拟器过一遍（CI 只做到构建与单测）。
 
 早先的记录卡曾把 `MainActivity.kt`、`ExportCheck.kt`、`AppViewModel.kt`、`CaptureScreen.kt`、`EntryScreen.kt`、`ListScreen.kt`、`UpdateDialog.kt` 和 `update/` 列为未提交改动，这些文件已在提交 `9e8686d` 中入库。
 
