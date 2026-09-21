@@ -3,6 +3,7 @@ package com.zongce.app.ui
 
 import android.app.Application
 import android.net.Uri
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zongce.app.core.FileNameRule
@@ -17,6 +18,7 @@ import com.zongce.app.export.ZipExporter
 import com.zongce.app.update.UpdateCheckResult
 import com.zongce.app.update.UpdateChecker
 import com.zongce.app.update.UpdateInfo
+import com.zongce.app.widget.JicunWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -117,6 +119,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (photos.isNotEmpty()) dao.insertPhotos(photos)
             }
 
+            refreshWidget()
             withContext(Dispatchers.Main) { onSaved(failures) }
         }
     }
@@ -128,7 +131,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             dao.deletePhotosOf(item.record.id)
             dao.deleteRecord(item.record)
+            refreshWidget()
         }
+    }
+
+    /**
+     * 数据变了就把桌面小组件推一次。
+     * 小组件不做定时轮询（updatePeriodMillis = 0），桌面上的数字靠这里和 App 保持一致。
+     * 失败只吞掉：小组件刷不出来，不该影响"把这条获奖记下来"这件正事。
+     */
+    private fun refreshWidget() {
+        viewModelScope.launch { runCatching { JicunWidget().updateAll(getApplication()) } }
     }
 
     private suspend fun currentPhotoName(photoId: Long): String? {

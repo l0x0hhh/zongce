@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         widgetAction = savedInstanceState?.getString("widgetAction")
-            ?: intent?.action?.takeIf(WidgetActions::isEntryAction)
+            ?: intent?.action?.takeIf(WidgetActions::isWidgetAction)
         enableEdgeToEdge()
         setContent {
             JicunTheme {
@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        widgetAction = intent.action?.takeIf(WidgetActions::isEntryAction)
+        widgetAction = intent.action?.takeIf(WidgetActions::isWidgetAction)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -105,9 +105,13 @@ private fun App(
         }
     }
 
+    // 小组件来的 action 分两路：录入类先切到拍摄页（实际动作由 CaptureScreen 触发），
+    // 浏览类直接落到成果页。
     androidx.compose.runtime.LaunchedEffect(widgetAction) {
-        if (widgetAction != null && currentRoute != ROUTE_CAPTURE) {
-            selectTab(ROUTE_CAPTURE)
+        when (widgetAction) {
+            WidgetActions.CAPTURE, WidgetActions.PICK_PHOTOS ->
+                if (currentRoute != ROUTE_CAPTURE) selectTab(ROUTE_CAPTURE)
+            WidgetActions.OPEN_ACHIEVEMENT -> selectTab(ROUTE_ACHIEVEMENT)
         }
     }
 
