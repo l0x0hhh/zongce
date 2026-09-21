@@ -23,7 +23,12 @@ android {
         create("release") {
             val storeFilePath = providers.gradleProperty("signingStoreFile").orNull
             if (!storeFilePath.isNullOrBlank()) {
-                storeFile = file(storeFilePath)
+                // 相对路径按【仓库根】解析，不是按 app/ 模块目录。
+                // 原因：CI 把解出来的 keystore 放在仓库根（.github/workflows/release.yml 写入
+                // `signingStoreFile=release.keystore` 并解码到仓库根），本机也把 keystore 放仓库根。
+                // 模块级的 file() 会去 app/release.keystore 找，必然 not found。
+                // rootProject.file() 对相对路径按根目录解析，对绝对路径原样使用，两种写法都对。
+                storeFile = rootProject.file(storeFilePath)
                 storePassword = providers.gradleProperty("signingStorePassword").orNull
                 keyAlias = providers.gradleProperty("signingKeyAlias").orNull
                 keyPassword = providers.gradleProperty("signingKeyPassword").orNull

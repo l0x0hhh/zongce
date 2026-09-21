@@ -31,6 +31,7 @@
 - `ExportCheck.run()`、`ZipExporter.export()`、`AppViewModel.checkBeforeExport()` 的 `targetYear` 改为必填参数，根除「默认值随系统日期静默滑动」这一类缺陷；`AGENTS.md` 补入对应规范（档位参数不得有默认值、学年过滤只保留一份实现、测试必须显式钉住学年）。
 - 导出流程中锁定学年下拉（仅 `Idle` / `Blocked` 状态可改），避免确认之后改档位导致显示范围与实际打包范围不一致。
 - `ExportCheckTest` 新增 2 个用例（总数 12）：选填字段只提醒不阻塞、跨学年记录只提示且过滤计数正确。
+- 修掉 release 流水线的**签名路径缺陷**：`app/build.gradle.kts` 读 `signingStoreFile` 用的是模块级 `file()`，**相对路径按 `app/` 模块目录解析**，而 `.github/workflows/release.yml` 是把解出来的 keystore 放在**仓库根**的 → CI 必然报 `.../app/release.keystore not found`。改用 `rootProject.file()`：相对路径=仓库根、绝对路径原样使用，两种写法都对，本地与 CI 语义一致。已做修复前/修复后的对照复现（修复前同一命令失败、修复后通过）。
 
 - 初始化 Android 项目 Git 仓库并推送到 GitHub。
 - 增加中英文项目说明：`README.md`、`README.en.md`。
@@ -66,6 +67,7 @@
   ```
   结果：`BUILD SUCCESSFUL in 2m 27s`，`26 actionable tasks: 7 executed, 19 up-to-date`（`7 executed` 说明 `compileDebugKotlin`、`compileDebugUnitTestKotlin`、`testDebugUnitTest` 确为真实执行，非 UP-TO-DATE 假绿）；证据在 `app/build/test-results/testDebugUnitTest/TEST-*.xml`，时间戳 `2026-09-21T04:17:39Z`。
 - [x] Android Debug APK 构建验证（CI）：GitHub Actions `CI #5` 对提交 `70b296a` 的 `verify` 作业全部通过，含 `Assemble debug APK` 与 `Upload debug APK`，产物 `jicun-debug-70b296a…`（16.2 MB）。这是本仓库 **CI 首次转绿** —— 此前 `CI #1`～`#4` 全部失败，且失败步骤恒为 `Run unit tests`，APK 步骤因此每次都被跳过（根因即上面那条时间依赖的红测试，修好后连带消失）。
+- [x] **正式签名链路验证（本机实签）**：用重新生成的 keystore 执行 `./gradlew :app:assembleRelease -PsigningStoreFile=release.keystore …`（刻意用**相对路径**，与 CI 的 `gradle.properties` 写法一致）→ `BUILD SUCCESSFUL`，产出 **`app-release.apk`（不是 `-unsigned`）**，`apksigner verify` 报 **`Verifies`**（v2 方案、1 个签名者、RSA 2048）。同一命令在修复签名路径前会报 `app/release.keystore not found`。
 - [ ] 真机或模拟器功能验证。
 
 ## 最近一次提交
@@ -92,6 +94,7 @@
 - `ExportScreen` 顶部的「$targetYear · $selectedCount 条记录」仍用 `belongsTo` 计数，与 `ExportCheck.targetItems()` 的判定在「日期缺失或非法」时不一致。这类记录会被体检阻断，所以目前只影响显示，待统一。
 - `gradle.properties` 的 `android.overridePathCheck=true` 是当年中文路径时期的产物，AGP 每次构建都会警告它「experimental」。路径已是纯 ASCII，这项可以删掉。
 - 界面新增的提醒确认页还没上真机/模拟器过一遍（CI 只做到构建与单测）。
+- **Release 仍未发布成功**：tag `v1.1.0` 已存在，Release 流水线两次失败的原因都已定位并修掉（第一次＝4 个签名 Secret 未配好；第二次＝上面那条签名路径缺陷）。剩下只有在仓库 Secrets 里填好 `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`（keystore 已于 2026-09-21 13:26 重新生成），然后重跑流水线。**注意：仓库至今没有任何 Release，落地页的下载入口和 App 内的更新检查都指向它。**
 
 早先的记录卡曾把 `MainActivity.kt`、`ExportCheck.kt`、`AppViewModel.kt`、`CaptureScreen.kt`、`EntryScreen.kt`、`ListScreen.kt`、`UpdateDialog.kt` 和 `update/` 列为未提交改动，这些文件已在提交 `9e8686d` 中入库。
 
