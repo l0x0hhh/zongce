@@ -51,7 +51,7 @@ comprehensive-assessment-materials_2025-2026.zip
 - No account, no sign-in, and **no feature that uploads materials to a server**.
 - Only two permissions are requested: `INTERNET` (update check only) and `REQUEST_INSTALL_PACKAGES` (installing a downloaded update). Capture is handled by the system camera app and import by the system photo picker, so **no camera or storage permission is needed**.
 - The only outbound request is the update check: it reads the configured mirror `latest.json` and falls back to the GitHub Release API when the mirror is missing or unavailable. It fetches a version number and a download URL, and sends no material content.
-- ⚠️ **System cloud backup**: the manifest sets `android:allowBackup="true"`, so Android's automatic backup may include the app database and photo copies in the user's own cloud backup, depending on system settings. The app itself does not upload anything, but that is not the same as the data existing only on one device.
+- ⚠️ **System cloud backup**: the manifest sets `android:allowBackup="true"`, so Android's automatic backup may include the app database and photo copies (depending on system settings). **This has nothing to do with a self-hosted server**: the backup is performed by the operating system into the user's own phone account (Google Drive, or a vendor cloud such as Huawei or Xiaomi). This project has no server and needs none, and the developer cannot access those backups. The app never uploads anything by itself, but "there is a system backup" is not the same as "the data exists only on this device".
 - Never publish unredacted certificate photos, exported ZIPs, logs, or screenshots — they may contain names, student IDs, identity documents, and other personal data.
 
 ## Install
