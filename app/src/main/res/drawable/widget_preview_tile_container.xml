@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 预览用：浅蓝底的功能块（对应「相册」）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFDCE9FA" />
+    <corners android:radius="16dp" />
+</shape>

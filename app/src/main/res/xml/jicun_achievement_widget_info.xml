@@ -9,12 +9,15 @@
   initialLayout 必须指向 Glance 自带的占位布局，真实内容由 JicunAchievementWidget 渲染进去。
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:description="@string/achievement_widget_description"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minHeight="110dp"
     android:minWidth="180dp"
+    android:previewLayout="@layout/widget_preview_achievement"
     android:resizeMode="horizontal|vertical"
     android:targetCellHeight="2"
     android:targetCellWidth="3"
     android:updatePeriodMillis="0"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen"
+    tools:ignore="UnusedAttribute" />
