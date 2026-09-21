@@ -136,7 +136,7 @@ jobs:
               done
 
           # 上传：multipart/form-data，文件字段名固定为 file
-          CODE=$(curl -s -o /tmp/gitee-attach.json -w '%{http_code}' -X POST \
+          CODE=$(curl -s --connect-timeout 30 --max-time 1200 -o /tmp/gitee-attach.json -w '%{http_code}' -X POST \
             "${API}/releases/${REL_ID}/attach_files" \
             -F "access_token=${GITEE_TOKEN}" \
             -F "file=@${APK}")
@@ -165,8 +165,11 @@ jobs:
             "apkUrl": "${APK_URL}"
           }
           JSON
+          # 注意必须先 add：latest.json 是新文件，commit -am 只覆盖已跟踪文件的改动，
+          # 镜像仓库里没有它时会"nothing to commit"直接失败（v1.2.1 首跑就栽在这）。
+          git -C "$WORK" add -A
           git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
-            commit -q -am "release: 暨存 ${V}"
+            commit -q -m "release: 暨存 ${V}"
           git -C "$WORK" push -q origin "HEAD:${MIRROR_BRANCH}"
 
           # 回读校验：确认清单真的能被匿名读到、且版本号对得上。
