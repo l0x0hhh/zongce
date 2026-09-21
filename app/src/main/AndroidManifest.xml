@@ -31,9 +31,9 @@
         </activity>
 
         <!--
-            桌面小组件：只承载「拍照 / 相册」两个入口，点击后把带 action 的 Intent 交给
-            MainActivity（singleTop），由它转发给录入页。组件本身不碰数据库、不保存照片。
-            exported=false 沿用 AppWidget 的常规写法：广播由系统发出，无需对外暴露。
+            桌面小组件之一：快速录入。只承载「拍照 / 相册」两个入口，点击后把带 action 的
+            Intent 交给 MainActivity（singleTop），由它转发给录入页。组件本身不碰数据库、
+            不保存照片。exported=false 沿用 AppWidget 的常规写法：广播由系统发出，无需对外暴露。
         -->
         <receiver
             android:name=".widget.JicunWidgetReceiver"
@@ -45,6 +45,23 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/jicun_widget_info" />
+        </receiver>
+
+        <!--
+            桌面小组件之二：成果概览。与上面那个是彼此独立的组件，用户可在桌面上分别添加。
+            本组件会读 Room 做展示（只读，绝不写入），数据变化时由 AppViewModel 主动推送刷新；
+            这与上面那个"不碰数据库"的约束不同，理由见 docs/adr/0002。
+        -->
+        <receiver
+            android:name=".widget.JicunAchievementWidgetReceiver"
+            android:exported="false"
+            android:label="@string/achievement_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/jicun_achievement_widget_info" />
         </receiver>
 
         <!-- 拍照临时文件 & 导出 ZIP 分享 -->

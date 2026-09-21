@@ -18,7 +18,7 @@ import com.zongce.app.export.ZipExporter
 import com.zongce.app.update.UpdateCheckResult
 import com.zongce.app.update.UpdateChecker
 import com.zongce.app.update.UpdateInfo
-import com.zongce.app.widget.JicunWidget
+import com.zongce.app.widget.JicunAchievementWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -136,12 +136,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 数据变了就把桌面小组件推一次。
-     * 小组件不做定时轮询（updatePeriodMillis = 0），桌面上的数字靠这里和 App 保持一致。
+     * 数据变了就把「成果概览」小组件推一次。
+     * 它不做定时轮询（updatePeriodMillis = 0），桌面上的数字靠这里和 App 保持一致。
+     * 只刷成果组件 —— 「快速录入」组件是纯入口、不显示数据，没有刷新的必要。
      * 失败只吞掉：小组件刷不出来，不该影响"把这条获奖记下来"这件正事。
      */
     private fun refreshWidget() {
-        viewModelScope.launch { runCatching { JicunWidget().updateAll(getApplication()) } }
+        viewModelScope.launch {
+            runCatching { JicunAchievementWidget().updateAll(getApplication()) }
+        }
     }
 
     private suspend fun currentPhotoName(photoId: Long): String? {

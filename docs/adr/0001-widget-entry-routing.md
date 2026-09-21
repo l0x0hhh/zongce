@@ -1,7 +1,7 @@
 # ADR-0001: 通过主 Activity 统一承接桌面小组件入口
 
 ## Status
-Accepted（部分修订 —— "小组件不直接操作数据库"一条已由 ADR-0002 放松为"只读可以、写入仍不行"；"录入入口统一由 MainActivity 承接"继续有效）
+Accepted（本 ADR 的约束仍然完全有效，原组件一字未改。另有一个**独立的**只读成果组件不适用"不碰数据库"这条约束，见 [ADR-0002](0002-widget-reads-summary.md)）
 
 ## Context
 

@@ -1,11 +1,5 @@
-// 桌面小组件本体：一张白色卡片，展示本学年的成果概览。
-//
-// 与 ADR-0001 原始约定的一处差异：小组件现在会**读** Room（只读，不写）。
-// 展示型组件必须有数据可读，而"每次刷新都唤起 Activity 去取数"更重也更卡。
-// 这次放松由 ADR-0002 记录；0001 的核心（录入入口统一由 MainActivity 承接）不变。
-//
-// 数据变化后由 AppViewModel.refreshWidget() 主动推送刷新；updatePeriodMillis 仍为 0。
-// 不做轮询 —— 桌面上的数字必须和 App 里看到的一致，靠推送不靠定时拉。
+// 桌面小组件本体：一张白色卡片，内含「拍照」「相册」两个入口。
+// 只负责发 Intent 给主 Activity，不碰数据库、不保存照片（见 docs/adr/0001）。
 package com.zongce.app.widget
 
 import android.content.Context
@@ -30,6 +24,7 @@ import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
@@ -42,51 +37,22 @@ import androidx.glance.unit.ColorProvider
 import com.zongce.app.MainActivity
 import com.zongce.app.R
 import com.zongce.app.WidgetActions
-import com.zongce.app.core.AcademicYear
-import com.zongce.app.data.AppDatabase
-import kotlinx.coroutines.flow.first
 
-// 小组件由桌面进程渲染，拿不到 App 的 Material 主题，色值只能显式写死。
-// 这四个值对应 Theme.kt 的 surface / onSurface / onSurfaceVariant / primary。
+// 与 Theme.kt 的轻档案配色保持一致，但小组件不依赖 Compose Material 主题，
+// 所以这里显式写死色值（RemoteViews 由桌面渲染，拿不到 App 的 CompositionLocal）。
 private val CardColor = Color(0xFFFFFFFF)
-private val InkColor = Color(0xFF18202B)
-private val MutedColor = Color(0xFF5D6875)
+private val InkColor = Color(0xFF1B2430)
 private val PrimaryColor = Color(0xFF2D5F9A)
-
-/** 小组件一屏要用的数据。没有记录时 count = 0、latestName = null。 */
-private data class WidgetSummary(
-    val year: String,
-    val count: Int,
-    val covered: Int,
-    val latestName: String?
-)
+private val PrimaryContainerColor = Color(0xFFDDEAFF)
 
 class JicunWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // 查库失败不能让小组件变成一片空白 —— 退化成"空档案"，至少还点得进 App。
-        val summary = runCatching { loadSummary(context) }
-            .getOrElse { WidgetSummary(AcademicYear.LABEL, 0, 0, null) }
-        provideContent { JicunWidgetContent(summary) }
+        provideContent { JicunWidgetContent() }
     }
 }
 
-private suspend fun loadSummary(context: Context): WidgetSummary {
-    val items = AppDatabase.get(context).awardDao().allWithPhotos().first()
-    val year = AcademicYear.LABEL
-    // 与成果页同一套口径：先按学年归属过滤，再按获奖时间倒序取最近一条。
-    val ofYear = items
-        .filter { AcademicYear.belongsTo(it.record.awardDate, year) }
-        .sortedByDescending { it.record.awardDate }
-    return WidgetSummary(
-        year = year,
-        count = ofYear.size,
-        covered = ofYear.map { it.record.wuyu }.distinct().size,
-        latestName = ofYear.firstOrNull()?.record?.awardName?.takeIf { it.isNotBlank() }
-    )
-}
-
 @Composable
-private fun JicunWidgetContent(summary: WidgetSummary) {
+private fun JicunWidgetContent() {
     val context = LocalContext.current
 
     Column(
@@ -94,81 +60,106 @@ private fun JicunWidgetContent(summary: WidgetSummary) {
             .fillMaxSize()
             .background(ColorProvider(CardColor))
             .cornerRadius(22.dp)
-            .clickable(openAchievementAction(context))
-            .padding(12.dp)
+            .padding(14.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // 标题行：点哪里都能打开 App（不带 action，走正常启动）。
+        Row(
+            modifier = GlanceModifier.clickable(openAppAction(context)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Image(
                 provider = ImageProvider(R.drawable.widget_logo),
                 contentDescription = null,
-                modifier = GlanceModifier.size(18.dp)
+                modifier = GlanceModifier.size(22.dp)
             )
-            Spacer(GlanceModifier.width(6.dp))
+            Spacer(GlanceModifier.width(8.dp))
             Text(
                 text = context.getString(R.string.app_name),
                 style = TextStyle(
                     color = ColorProvider(InkColor),
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
             )
-            // 只用 defaultWeight 推右，不叠 fillMaxSize —— 两者同叠会把宽度撑成 MATCH_PARENT
-            // 并挤掉同行其它子项（v1.2.1 踩过，见 JicunWidget 的历史注释）。
-            Spacer(GlanceModifier.defaultWeight())
-            Text(
-                text = summary.year,
-                style = TextStyle(color = ColorProvider(MutedColor), fontSize = 11.sp)
-            )
         }
 
-        Spacer(GlanceModifier.height(8.dp))
+        Spacer(GlanceModifier.height(12.dp))
 
-        if (summary.count == 0) {
-            // 空状态说清"这里本该有什么"，而不是甩一个 0 给用户。
-            Text(
-                text = "还没有记录",
-                style = TextStyle(
-                    color = ColorProvider(InkColor),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium
-                )
+        // 两个入口：拍照是主路径，用主色填充；相册是次路径，用浅蓝底。
+        Row(modifier = GlanceModifier.fillMaxSize()) {
+            EntryTile(
+                label = context.getString(R.string.widget_capture),
+                iconRes = R.drawable.ic_widget_camera,
+                backgroundColor = PrimaryColor,
+                contentColor = Color.White,
+                modifier = GlanceModifier.defaultWeight(),
+                onClick = entryAction(context, WidgetActions.CAPTURE)
             )
-            Spacer(GlanceModifier.height(2.dp))
-            Text(
-                text = "拍下证书就会出现在这里",
-                style = TextStyle(color = ColorProvider(MutedColor), fontSize = 11.sp)
-            )
-        } else {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = summary.count.toString(),
-                    style = TextStyle(
-                        color = ColorProvider(PrimaryColor),
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                Spacer(GlanceModifier.width(4.dp))
-                Text(
-                    text = "条成果 · 覆盖 ${summary.covered} 育",
-                    style = TextStyle(color = ColorProvider(MutedColor), fontSize = 11.sp)
-                )
-            }
-            Spacer(GlanceModifier.height(6.dp))
-            Text(
-                text = "最近 ${summary.latestName.orEmpty()}",
-                style = TextStyle(color = ColorProvider(InkColor), fontSize = 11.sp),
-                maxLines = 1
+            Spacer(GlanceModifier.width(10.dp))
+            EntryTile(
+                label = context.getString(R.string.widget_pick_photos),
+                iconRes = R.drawable.ic_widget_gallery,
+                backgroundColor = PrimaryContainerColor,
+                contentColor = PrimaryColor,
+                modifier = GlanceModifier.defaultWeight(),
+                onClick = entryAction(context, WidgetActions.PICK_PHOTOS)
             )
         }
     }
 }
 
-// 点整块卡片 → 直接落到成果页。显式组件 + action 字符串，
-// MainActivity 靠 action 分辨要切到哪个 tab（见 WidgetActions）。
-private fun openAchievementAction(context: Context): Action =
+@Composable
+private fun EntryTile(
+    label: String,
+    iconRes: Int,
+    backgroundColor: Color,
+    contentColor: Color,
+    modifier: GlanceModifier,
+    onClick: Action
+) {
+    // ⚠️ 这里必须是 fillMaxHeight()，不能写 fillMaxSize()。
+    // 调用方传进来的是 defaultWeight()（= layout_weight = 1），而 fillMaxSize() 会把宽度设成
+    // MATCH_PARENT；两者叠在同一个子项上，LinearLayout 会让第一个子项独占整行、第二个被挤成 0 宽
+    // —— 桌面上的表现就是"只看得到拍照，相册不见了"（宽度交给 weight 分配，这里只管高度）。
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .background(ColorProvider(backgroundColor))
+            .cornerRadius(16.dp)
+            .clickable(onClick)
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            provider = ImageProvider(iconRes),
+            contentDescription = null,
+            modifier = GlanceModifier.size(20.dp)
+        )
+        Spacer(GlanceModifier.height(6.dp))
+        Text(
+            text = label,
+            style = TextStyle(
+                color = ColorProvider(contentColor),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        )
+    }
+}
+
+// 入口 Intent 用显式组件 + action 字符串，主 Activity 靠 action 分辨是拍照还是相册。
+// 加 NEW_TASK 是为了复用已打开的 App 任务栈（配合 launchMode="singleTop" 走 onNewIntent），
+// 否则从桌面点开会再起一个实例。
+private fun entryAction(context: Context, action: String): Action =
     actionStartActivity(
         Intent(context, MainActivity::class.java)
-            .setAction(WidgetActions.OPEN_ACHIEVEMENT)
+            .setAction(action)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+
+private fun openAppAction(context: Context): Action =
+    actionStartActivity(
+        Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     )

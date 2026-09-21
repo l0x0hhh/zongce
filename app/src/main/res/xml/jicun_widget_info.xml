@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   桌面小组件的系统登记信息。
-  规格：3×2 格（约 180×110dp），可横向/纵向拉伸；只在桌面出现。
-  updatePeriodMillis=0：内容不靠定时轮询刷新，而是由 AppViewModel.refreshWidget() 在保存/删除
-  记录后主动推送（见 docs/adr/0002）。小组件对 Room 只读，不写、不参与照片生命周期。
+  规格：3×2 格（约 180×110dp），可横向/纵向拉伸；只在桌面出现；不主动定时刷新
+  （updatePeriodMillis=0，内容全是静态入口，没有需要轮询的数据）。
   initialLayout 必须指向 Glance 自带的占位布局，真实内容由 JicunWidget 渲染进去。
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
