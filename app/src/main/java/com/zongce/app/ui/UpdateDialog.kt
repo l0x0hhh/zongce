@@ -57,7 +57,7 @@ fun UpdateDialog(
         text = {
             when (state) {
                 UpdateUiState.Checking -> CircularProgressIndicator()
-                is UpdateUiState.UpToDate -> Text("当前版本 ${state.version}，可以继续使用。")
+                is UpdateUiState.UpToDate -> Text("当前版本 ${state.version}，可以继续使用")
                 is UpdateUiState.Available -> UpdateAvailableText(state.info)
                 is UpdateUiState.Downloading -> {
                     Column {
@@ -75,7 +75,7 @@ fun UpdateDialog(
                         }
                     }
                 }
-                is UpdateUiState.Ready -> Text("版本 ${state.info.version} 已下载，交给系统完成安装。")
+                is UpdateUiState.Ready -> Text("版本 ${state.info.version} 已下载，交给系统完成安装")
                 is UpdateUiState.Error -> Text(state.message, color = MaterialTheme.colorScheme.error)
                 UpdateUiState.Idle -> Unit
             }

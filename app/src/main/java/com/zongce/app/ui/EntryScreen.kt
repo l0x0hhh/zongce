@@ -1,38 +1,44 @@
-// 录入页展示照片导入结果，统一五育文案并避免失败被用户误认为已经保存。
+// 录入页：一屏全字段。
+// 证书在手上的那一刻是信息唯一完备的时刻——所以级别/等级/角色同屏展示，
+// 不制造"反正可以后补"的心理许可。必填仍只有三样：五育 / 获奖名称 / 获奖时间。
+//
+// 字段外观统一为填充式（浅灰底、无描边）：输入框、选择框、日期框三者长得一模一样，
+// 因为它们对用户而言都是"点一下填一个值"，行为一致的控件必须长得一致。
 package com.zongce.app.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,9 +53,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.zongce.app.core.AcademicYear
 import com.zongce.app.data.AwardPhoto
@@ -62,11 +67,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-/**
- * 录入页：一屏全字段。
- * 证书在手上的那一刻是信息唯一完备的时刻——所以级别/等级/角色同屏展示，
- * 不制造"反正可以后补"的心理许可。必填仍只有三样：五育 / 获奖名称 / 获奖时间。
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryScreen(
@@ -123,43 +123,47 @@ fun EntryScreen(
     ) { uris -> extraUris.addAll(uris) }
 
     val yearCheck = remember(awardDate) { AcademicYear.check(awardDate) }
+    val photoTotal = existingPhotos.size + extraUris.size
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(horizontal = Space.page, vertical = Space.lg)
     ) {
-        Text(if (recordId == 0L) "新增获奖记录" else "编辑获奖记录",
-            style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(12.dp))
+        Text(
+            if (recordId == 0L) "新增记录" else "编辑记录",
+            style = MaterialTheme.typography.headlineSmall
+        )
 
-        // ---------- 照片 ----------
+        Spacer(Modifier.height(Space.xl))
+
+        // ---------- 证明材料 ----------
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("证明材料", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.width(8.dp))
+            FieldLabel("证明材料")
+            Spacer(Modifier.width(Space.sm))
             Text(
-                "${existingPhotos.size + extraUris.size} 张",
+                "$photoTotal 张",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Spacer(Modifier.height(8.dp))
-        if (existingPhotos.isEmpty() && extraUris.isEmpty()) {
+        Spacer(Modifier.height(Space.sm))
+        if (photoTotal == 0) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.medium,
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    "还没有照片，建议先拍下证书或从相册选择",
+                    "还没有照片，先拍下证书或从相册选择",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.padding(Space.lg)
                 )
             }
         } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                 items(existingPhotos, key = { it.id }) { photo ->
                     PhotoPreview(
                         label = "已保存",
@@ -181,72 +185,67 @@ fun EntryScreen(
                 }
             }
         }
-        OutlinedButton(
-            onClick = { addPhotos.launch("image/*") },
-            modifier = Modifier.padding(top = 8.dp)
-        ) { Text("添加照片") }
+        Spacer(Modifier.height(Space.sm))
+        OutlinedButton(onClick = { addPhotos.launch("image/*") }) { Text("添加照片") }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Space.xl))
 
-        // ---------- 归属五育（必选） ----------
-        Text("归到五育其一 *", style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
+        // ---------- 归到五育（必选） ----------
+        FieldLabel("归到五育其一", required = true)
+        Spacer(Modifier.height(Space.sm))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             items(WUYU_LIST) { w ->
-                FilterChip(
-                    selected = wuyu == w,
-                    onClick = { wuyu = w },
-                    label = { Text(w) }
-                )
+                JicunChip(text = w, selected = wuyu == w, onClick = { wuyu = w })
             }
         }
 
+        Spacer(Modifier.height(Space.lg))
+
         // ---------- 获奖名称（必填） ----------
-        OutlinedTextField(
+        JicunTextField(
             value = awardName,
             onValueChange = { awardName = it },
-            label = { Text("获奖名称 *") },
-            placeholder = { Text("写全称，会进文件名") },
-            modifier = Modifier.fillMaxWidth()
+            label = "获奖名称",
+            required = true,
+            placeholder = "写全称，会进文件名"
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Space.lg))
 
         // ---------- 获奖时间（必填 + 自动归属学年） ----------
-        Text("获奖时间 *", style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                awardDate.ifBlank { "请选择" },
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 52.dp)
-                    .clickable { showPicker = true }
-                    .padding(vertical = 14.dp)
-            )
-            TextButton(onClick = { showPicker = true }) { Text("选择日期") }
-        }
+        FieldLabel("获奖时间", required = true)
+        Spacer(Modifier.height(Space.sm))
+        DateField(value = awardDate, onClick = { showPicker = true })
+        Spacer(Modifier.height(Space.sm))
         YearHint(yearCheck)
-        Text("请对照证书上的获奖时间确认（拍摄日期 ≠ 获奖日期）",
+        Spacer(Modifier.height(Space.xs))
+        Text(
+            "对照证书上的获奖时间填写（拍摄日期 ≠ 获奖日期）",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Space.lg))
 
         // ---------- 其余字段（同屏，可不填） ----------
-        DropdownField("获奖级别", level, LEVEL_OPTIONS, onChange = { level = it })
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
+        DropdownField(
+            label = "获奖级别",
+            value = level,
+            options = LEVEL_OPTIONS,
+            onChange = { level = it }
+        )
+
+        Spacer(Modifier.height(Space.lg))
+
+        JicunTextField(
             value = grade,
             onValueChange = { grade = it },
-            label = { Text("获奖等级或名次") },
-            supportingText = { Text("建议按证书原文填写，如一等奖、金奖、第2名") },
-            modifier = Modifier.fillMaxWidth()
+            label = "获奖等级或名次",
+            supporting = "按证书原文填写，如一等奖、金奖、第2名"
         )
-        Spacer(Modifier.height(12.dp))
+
+        Spacer(Modifier.height(Space.lg))
+
         DropdownField(
             label = "本人角色或排名",
             value = role,
@@ -254,22 +253,24 @@ fun EntryScreen(
             onChange = { role = it },
             groups = roleOptionGroups(ROLE_OPTIONS)
         )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
+
+        Spacer(Modifier.height(Space.lg))
+
+        JicunTextField(
             value = issuer,
             onValueChange = { issuer = it },
-            label = { Text("发证或主办单位") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = note,
-            onValueChange = { note = it },
-            label = { Text("备注（不会进文件名和清单）") },
-            modifier = Modifier.fillMaxWidth()
+            label = "发证或主办单位"
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Space.lg))
+
+        JicunTextField(
+            value = note,
+            onValueChange = { note = it },
+            label = "备注（不会进文件名和清单）"
+        )
+
+        Spacer(Modifier.height(Space.xxl))
 
         Button(
             onClick = {
@@ -303,10 +304,12 @@ fun EntryScreen(
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
         ) { Text("保存") }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(Space.xxxl))
     }
 
     if (showPicker) {
@@ -341,17 +344,49 @@ fun EntryScreen(
     }
 }
 
+/** 日期字段：外观与输入框、选择框完全一致，只是右侧换成日历图标。 */
+@Composable
+private fun DateField(value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 52.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = Space.lg, vertical = Space.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            value.ifBlank { "请选择" },
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (value.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(Space.sm))
+        Icon(
+            Icons.Default.CalendarMonth,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+/**
+ * 学年归属提示。
+ * 三个状态直接把 check.message 原样输出 —— message 自身已经说清了是哪一种边界情况，
+ * 外面再套一层前缀会变成"边界日：边界日（2026-09-01）：…"这种重复。
+ */
 @Composable
 private fun YearHint(check: AcademicYear.Check) {
-    val (text, color) = when (check.status) {
-        AcademicYear.Status.OK -> "${check.message}" to
-            MaterialTheme.colorScheme.onSurfaceVariant
-        AcademicYear.Status.BOUNDARY -> "边界日：${check.message}" to
-            MaterialTheme.colorScheme.tertiary
-        AcademicYear.Status.OUT_OF_RANGE -> check.message to
-            MaterialTheme.colorScheme.error
+    val color = when (check.status) {
+        AcademicYear.Status.OK -> MaterialTheme.colorScheme.onSurfaceVariant
+        AcademicYear.Status.BOUNDARY -> MaterialTheme.colorScheme.tertiary
+        AcademicYear.Status.OUT_OF_RANGE -> MaterialTheme.colorScheme.error
     }
-    Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+    Text(check.message, style = MaterialTheme.typography.bodySmall, color = color)
 }
 
 @Composable
@@ -367,7 +402,7 @@ private fun PhotoPreview(
             shape = CircleShape,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(4.dp)
+                .padding(Space.xs)
                 .size(28.dp)
         ) {
             IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
@@ -387,7 +422,7 @@ private fun PhotoPreview(
                 label,
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                modifier = Modifier.padding(horizontal = Space.sm, vertical = Space.xxs)
             )
         }
     }

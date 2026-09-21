@@ -1,10 +1,14 @@
-// 首屏相机入口、品牌展示与轻量反馈动效。
+// 首屏即相机。
+// 用户打开 App 的全部意图就是"我手里有个证书"——服务这个意图，别打断它。
+// 所以这一页只做两件事：把快门放在视觉中心，把"我攒了多少"缩成一行摘要（明细交给成果页）。
 package com.zongce.app.ui
 
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,20 +22,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -46,35 +44,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.zongce.app.R
 import com.zongce.app.WidgetActions
-import com.zongce.app.data.RecordWithPhotos
 import java.io.File
 
-/**
- * 首屏即相机。
- * 用户打开 App 的全部意图就是"我手里有个证书"——服务这个意图，别打断它。
- */
 @Composable
 fun CaptureScreen(
     vm: AppViewModel,
     recordCount: Int,
-    recentItems: List<RecordWithPhotos>,
     widgetAction: String? = null,
     onWidgetActionConsumed: () -> Unit = {},
     onGoEntry: () -> Unit,
+    onGoAchievement: () -> Unit,
     onCheckUpdate: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var tmpUri by remember { mutableStateOf<Uri?>(null) }
     var pressed by remember { mutableStateOf(false) }
+    // HIG：按压反馈 scale 0.97，临界阻尼不弹跳 —— 弹跳会让人怀疑界面没做完。
     val shutterScale by animateFloatAsState(
-        targetValue = if (pressed) 0.94f else 1f,
-        animationSpec = spring(stiffness = 700f),
+        targetValue = if (pressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = Motion.DAMPING, stiffness = Motion.STIFFNESS),
         label = "shutterScale"
     )
 
@@ -115,84 +112,57 @@ fun CaptureScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = Space.page)
+            .padding(top = Space.xl, bottom = Space.xxl)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painter = painterResource(R.drawable.logo),
                 contentDescription = "暨存 Logo",
                 modifier = Modifier
-                    .size(60.dp)
-                    .clip(RoundedCornerShape(16.dp)),
+                    .size(52.dp)
+                    .clip(MaterialTheme.shapes.medium),
                 contentScale = ContentScale.Crop
             )
-            Spacer(Modifier.size(12.dp))
+            Spacer(Modifier.width(Space.md))
             Column {
                 Text("暨存", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(Space.xxs))
                 Text(
-                    androidx.compose.ui.res.stringResource(R.string.app_slogan),
+                    stringResource(R.string.app_slogan),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth()
+        // 上下的弹性空白让快门落在视觉重心，而不是死居中。
+        Spacer(Modifier.weight(1f))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("快速存证", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "拍下证书，归到五育其一。需要填报时，再导出材料包。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(18.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .size(156.dp)
-                        .graphicsLayer {
-                            scaleX = shutterScale
-                            scaleY = shutterScale
-                        }
-                        .border(4.dp, MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                        .clickable {
-                            pressed = true
-                            val (uri, _) = createCameraUri(context)
-                            tmpUri = uri
-                            takePicture.launch(uri)
-                        },
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                Icons.Default.PhotoCamera,
-                                contentDescription = null,
-                                modifier = Modifier.size(30.dp)
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text("拍照", style = MaterialTheme.typography.titleMedium)
-                        }
-                    }
+            Text("拍下证书", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(Space.xs))
+            Text(
+                "归到五育其一，需要填报时再导出材料包",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(Space.xxl))
+            ShutterButton(
+                scale = shutterScale,
+                onPress = {
+                    pressed = true
+                    val (uri, _) = createCameraUri(context)
+                    tmpUri = uri
+                    takePicture.launch(uri)
                 }
-            }
+            )
         }
+
+        Spacer(Modifier.weight(1f))
 
         OutlinedButton(
             onClick = { pickPhotos.launch("image/*") },
@@ -203,83 +173,64 @@ fun CaptureScreen(
                 contentDescription = null,
                 modifier = Modifier.size(18.dp)
             )
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.width(Space.sm))
             Text("从相册选择照片")
         }
+
+        Spacer(Modifier.height(Space.md))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "已存 $recordCount 条",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
+            TextButton(onClick = onGoAchievement) {
+                Text("已存 $recordCount 条")
+                Spacer(Modifier.width(Space.xxs))
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(Modifier.weight(1f))
             TextButton(onClick = onCheckUpdate) {
-                Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.size(4.dp))
+                Icon(
+                    Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(Space.xs))
                 Text("检查更新")
             }
-        }
-
-        if (recentItems.isNotEmpty()) {
-            RecentArchive(items = recentItems, totalCount = recordCount)
         }
     }
 }
 
-/** 首页底部展示最近存入的记录，让留白变成可回看的档案摘要。 */
+/** 快门：实心品牌圆 + 一圈浅色环，外环是"按下去会回弹"的唯一视觉暗示。 */
 @Composable
-private fun RecentArchive(items: List<RecordWithPhotos>, totalCount: Int) {
+private fun ShutterButton(scale: Float, onPress: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("最近存入", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "共 $totalCount 条",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shape = CircleShape,
+        modifier = Modifier
+            .size(148.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
             }
-            Spacer(Modifier.height(8.dp))
-            items.forEachIndexed { index, item ->
-                if (index > 0) Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = CircleShape,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                item.record.wuyu.take(1),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-                    Spacer(Modifier.size(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            item.record.awardName.ifBlank { "未填写获奖名称" },
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "${item.record.wuyu} · ${item.record.awardDate.ifBlank { "未填写时间" }}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+            .border(3.dp, MaterialTheme.colorScheme.primaryContainer, CircleShape)
+            .clickable(onClick = onPress)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Default.PhotoCamera,
+                    contentDescription = null,
+                    modifier = Modifier.size(30.dp)
+                )
+                Spacer(Modifier.height(Space.xs))
+                Text("拍照", style = MaterialTheme.typography.titleMedium)
             }
         }
     }

@@ -1,9 +1,12 @@
-// 记录列表与五育筛选：让所有五育入口可见，记录状态一眼可读。
+// 记录页：全部记录的检索与编辑入口。
+// 顶部只留两件事——五育筛选、哪些记录还缺字段。其余信息一律压进副标题，
+// 因为这一页的任务是"找到那条要改的记录"，不是给用户看统计报表。
 package com.zongce.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,22 +17,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.WarningAmber
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zongce.app.data.PhotoStore
@@ -53,8 +57,10 @@ fun ListScreen(
     val photoStore = remember { PhotoStore(context) }
     var filter by remember { mutableStateOf("全部") }
     var onlyIncomplete by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<RecordWithPhotos?>(null) }
 
     val incompleteCount = items.count { it.record.missingFields().isNotEmpty() }
+    val photoCount = items.sumOf { it.photos.size }
     val shown = items
         .filter { filter == "全部" || it.record.wuyu == filter }
         .filter { !onlyIncomplete || it.record.missingFields().isNotEmpty() }
@@ -62,172 +68,132 @@ fun ListScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = Space.page, vertical = Space.lg)
     ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("我的记录", style = MaterialTheme.typography.headlineSmall)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (items.isEmpty()) "把每一次获得，都收进暨存。"
-                    else "共 ${items.size} 条记录，按五育整理得井井有条。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        Text("记录", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(Space.xs))
+        Text(
+            if (items.isEmpty()) "存下的证明材料会列在这里"
+            else "共 ${items.size} 条 · $photoCount 张证明材料",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(Modifier.height(Space.lg))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(Space.sm)
+        ) {
+            listOf("全部").plus(WUYU_LIST).forEach { wuyu ->
+                JicunChip(
+                    text = wuyu,
+                    selected = filter == wuyu,
+                    onClick = { filter = wuyu }
                 )
-            }
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        items.size.toString(),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        "条记录",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
             }
         }
 
-        Spacer(Modifier.height(18.dp))
-
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        // 缺字段提示做成一行轻文字，不再占一条色块 —— 它是个次要入口，不该和主筛选抢注意力。
+        if (incompleteCount > 0) {
+            Spacer(Modifier.height(Space.sm))
             Row(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable { onlyIncomplete = !onlyIncomplete }
+                    .padding(vertical = Space.sm, horizontal = Space.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.PhotoLibrary,
+                    Icons.Default.WarningAmber,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(16.dp)
                 )
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("证明材料已归档", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        "每条记录都可以保存多张证书照片",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Spacer(Modifier.width(Space.sm))
                 Text(
-                    "${items.sumOf { it.photos.size }} 张",
-                    style = MaterialTheme.typography.labelLarge,
+                    "$incompleteCount 条记录还缺字段",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.width(Space.sm))
+                Text(
+                    if (onlyIncomplete) "显示全部" else "只看它们",
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
         }
 
-        if (incompleteCount > 0) {
-            Spacer(Modifier.height(10.dp))
-            Surface(
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                shape = MaterialTheme.shapes.medium,
+        if (shown.isEmpty()) {
+            EmptyState(hasAnyRecord = items.isNotEmpty())
+        } else {
+            Spacer(Modifier.height(Space.md))
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onlyIncomplete = !onlyIncomplete }
+                    .weight(1f),
+                contentPadding = PaddingValues(bottom = Space.xxl)
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.WarningAmber,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.size(20.dp)
+                itemsIndexed(shown, key = { _, it -> it.record.id }) { index, item ->
+                    // 首尾行各自带一侧圆角，中间行直角 —— 视觉上连成一整张卡，
+                    // 但每行仍是独立的 Lazy 项，记录再多也不会一次性渲染。
+                    val shape = RoundedCornerShape(
+                        topStart = if (index == 0) 20.dp else 0.dp,
+                        topEnd = if (index == 0) 20.dp else 0.dp,
+                        bottomStart = if (index == shown.lastIndex) 20.dp else 0.dp,
+                        bottomEnd = if (index == shown.lastIndex) 20.dp else 0.dp
                     )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "${incompleteCount} 条记录还有字段待补充",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        if (onlyIncomplete) "显示全部" else "只看待补充",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Surface(color = MaterialTheme.colorScheme.surface, shape = shape) {
+                        Column {
+                            RecordRow(
+                                item = item,
+                                photoStore = photoStore,
+                                onEdit = { onEdit(item.record.id) },
+                                onDelete = { pendingDelete = item }
+                            )
+                            if (index != shown.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(
+                                        start = Space.lg,
+                                        end = Space.lg
+                                    ),
+                                    thickness = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
 
-        Spacer(Modifier.height(18.dp))
-        Text(
-            "按五育筛选",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+    // 删除会连带删掉照片文件，不可恢复 —— 必须先问一次。
+    pendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除这条记录？") },
+            text = {
+                Text(
+                    "「${target.record.awardName.ifBlank { "未填写获奖名称" }}」" +
+                        "和它的 ${target.photos.size} 张照片会一起删除，无法恢复"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteRecord(target)
+                    pendingDelete = null
+                }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            }
         )
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf("全部").plus(WUYU_LIST).forEach { wuyu ->
-                FilterChip(
-                    selected = filter == wuyu,
-                    onClick = { filter = wuyu },
-                    label = { Text(wuyu) }
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        if (shown.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    Icons.Default.PhotoLibrary,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(34.dp)
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    if (items.isEmpty()) "还没有记录" else "这个筛选下暂无记录",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (items.isEmpty()) "去拍一张证书，把努力存下来。" else "换个五育筛选试试。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                items(shown, key = { it.record.id }) { item ->
-                    RecordRow(
-                        item = item,
-                        photoStore = photoStore,
-                        onEdit = { onEdit(item.record.id) },
-                        onDelete = { vm.deleteRecord(item) }
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -240,79 +206,107 @@ private fun RecordRow(
 ) {
     val record = item.record
     val missing = record.missingFields()
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onEdit() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (item.photos.isNotEmpty()) {
-                PhotoThumb(
-                    file = photoStore.photoFile(item.photos.first().fileName),
-                    size = 64
-                )
-            } else {
+
+    JicunRow(onClick = onEdit) {
+        if (item.photos.isNotEmpty()) {
+            PhotoThumb(
+                file = photoStore.photoFile(item.photos.first().fileName),
+                size = 56
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(MaterialTheme.shapes.small),
+                contentAlignment = Alignment.Center
+            ) {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.size(64.dp)
-                ) {
-                    Icon(
-                        Icons.Default.PhotoLibrary,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(20.dp)
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    record.awardName.ifBlank { "未填写获奖名称" },
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.fillMaxSize()
+                ) {}
+                Icon(
+                    Icons.Default.PhotoLibrary,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    listOfNotNull(
-                        record.wuyu.ifBlank { null },
-                        record.awardDate.ifBlank { "未填写时间" },
-                        record.level.takeIf { it.isNotBlank() },
-                        record.grade.takeIf { it.isNotBlank() }
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (missing.isNotEmpty() || item.photos.size > 1) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        buildString {
-                            if (missing.isNotEmpty()) append("待补充：${missing.joinToString("、")}")
-                            if (missing.isNotEmpty() && item.photos.size > 1) append("  ·  ")
-                            if (item.photos.size > 1) append("${item.photos.size} 张证明")
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (missing.isNotEmpty()) MaterialTheme.colorScheme.tertiary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = "编辑",
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "删除")
             }
         }
+        Spacer(Modifier.width(Space.md))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                record.awardName.ifBlank { "未填写获奖名称" },
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(Space.xxs))
+            Text(
+                listOfNotNull(
+                    record.wuyu.ifBlank { null },
+                    record.awardDate.ifBlank { "未填写时间" },
+                    record.level.takeIf { it.isNotBlank() },
+                    record.grade.takeIf { it.isNotBlank() }
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (missing.isNotEmpty() || item.photos.size > 1) {
+                Spacer(Modifier.height(Space.xxs))
+                Text(
+                    buildString {
+                        if (missing.isNotEmpty()) append("待补充：${missing.joinToString("、")}")
+                        if (missing.isNotEmpty() && item.photos.size > 1) append("  ·  ")
+                        if (item.photos.size > 1) append("${item.photos.size} 张证明")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (missing.isNotEmpty()) MaterialTheme.colorScheme.tertiary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        // 去掉原来的 chevron：整行已经可点，再放一个箭头是重复表达。
+        IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "删除",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(hasAnyRecord: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = Space.xxl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            Icons.Default.PhotoLibrary,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(32.dp)
+        )
+        Spacer(Modifier.height(Space.md))
+        Text(
+            if (hasAnyRecord) "这个筛选下没有记录" else "还没有记录",
+            style = MaterialTheme.typography.titleSmall
+        )
+        Spacer(Modifier.height(Space.xs))
+        Text(
+            if (hasAnyRecord) "换个五育筛选试试" else "去拍一张证书，把努力存下来",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

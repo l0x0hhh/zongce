@@ -66,33 +66,19 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(horizontal = Space.page, vertical = Space.lg)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.size(48.dp)
-            ) {
-                androidx.compose.material3.Icon(
-                    Icons.Default.Archive,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("导出材料包", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    "把记录整理成可提交的文件夹",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        Column {
+            Text("导出", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(Space.xs))
+            Text(
+                "把记录整理成可提交的文件夹",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(Space.xl))
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,
             shape = MaterialTheme.shapes.medium,
@@ -206,7 +192,7 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                         Spacer(Modifier.height(16.dp))
                         val total = current.total.coerceAtLeast(1)
                         LinearProgressIndicator(
-                            progress = current.done.toFloat() / total,
+                            progress = { current.done.toFloat() / total },
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(Modifier.height(8.dp))

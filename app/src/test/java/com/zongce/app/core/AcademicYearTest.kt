@@ -39,4 +39,26 @@ class AcademicYearTest {
         assertEquals(AcademicYear.Status.BOUNDARY, AcademicYear.check("2026-09-01").status)
         assertEquals(AcademicYear.Status.BOUNDARY, AcademicYear.check("2027-08-31").status)
     }
+
+    // 断言只涉及相对顺序、不涉及 LABEL 的具体值 ——
+    // 任何"当前学年等于某个固定字符串"的断言都会在某个 9 月 1 日悄悄变红。
+    @Test
+    fun yearsOfCollectsEveryYearPresentInRecordsAndSortsDescending() {
+        val years = AcademicYear.yearsOf(listOf("2026-05-01", "2024-10-01", "2024-09-01"))
+
+        assertTrue(years.contains(AcademicYear.LABEL))
+        assertTrue(years.containsAll(listOf("2025-2026", "2024-2025")))
+        // 两次 2024 学年要合并成一条，且近的排在前面。
+        assertEquals(1, years.count { it == "2024-2025" })
+        assertTrue(years.indexOf("2025-2026") < years.indexOf("2024-2025"))
+    }
+
+    @Test
+    fun yearsOfSkipsUnparsableDatesInsteadOfThrowing() {
+        // 格式不合法的日期本来就该由导出体检拦下，这里不能让整页崩掉。
+        val years = AcademicYear.yearsOf(listOf("2026/05/01", "", "2026-05-01"))
+
+        assertTrue(years.contains(AcademicYear.LABEL))
+        assertTrue(years.contains("2025-2026"))
+    }
 }

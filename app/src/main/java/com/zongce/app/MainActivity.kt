@@ -9,16 +9,13 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -35,18 +31,20 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.zongce.app.ui.AchievementScreen
 import com.zongce.app.ui.AppViewModel
 import com.zongce.app.ui.CaptureScreen
 import com.zongce.app.ui.EntryScreen
 import com.zongce.app.ui.ExportScreen
 import com.zongce.app.ui.JicunGlassNavigationBar
-import com.zongce.app.ui.ListScreen
 import com.zongce.app.ui.JicunTheme
+import com.zongce.app.ui.ListScreen
 import com.zongce.app.ui.UpdateDialog
 import com.zongce.app.ui.defaultAppTabs
 import com.zongce.app.update.UpdateChecker
 
 private const val ROUTE_CAPTURE = "capture"
+private const val ROUTE_ACHIEVEMENT = "achievement"
 private const val ROUTE_LIST = "list"
 private const val ROUTE_EXPORT = "export"
 private const val ROUTE_ENTRY = "entry/{recordId}"
@@ -98,13 +96,18 @@ private fun App(
 
     val tabs = defaultAppTabs()
 
+    // 底部 tab 之间切换：保持各自的滚动位置，不堆栈。
+    val selectTab: (String) -> Unit = { route ->
+        nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(widgetAction) {
         if (widgetAction != null && currentRoute != ROUTE_CAPTURE) {
-            nav.navigate(ROUTE_CAPTURE) {
-                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
+            selectTab(ROUTE_CAPTURE)
         }
     }
 
@@ -114,13 +117,7 @@ private fun App(
                 JicunGlassNavigationBar(
                     tabs = tabs,
                     selectedRoute = currentRoute,
-                    onSelect = { route ->
-                        nav.navigate(route) {
-                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    onSelect = selectTab
                 )
             }
         }
@@ -138,11 +135,25 @@ private fun App(
                 CaptureScreen(
                     vm = vm,
                     recordCount = items.size,
-                    recentItems = items.asReversed().take(3),
                     widgetAction = widgetAction,
                     onWidgetActionConsumed = onWidgetActionConsumed,
                     onGoEntry = { nav.navigate("entry/0") },
+                    onGoAchievement = { selectTab(ROUTE_ACHIEVEMENT) },
                     onCheckUpdate = vm::checkForUpdate
+                )
+            }
+            composable(
+                route = ROUTE_ACHIEVEMENT,
+                enterTransition = { fadeIn(tween(180)) },
+                exitTransition = { fadeOut(tween(120)) }
+            ) {
+                AchievementScreen(
+                    items = items,
+                    onOpenRecord = { id -> nav.navigate("entry/$id") },
+                    onAddRecord = {
+                        vm.clearPending()
+                        nav.navigate("entry/0")
+                    }
                 )
             }
             composable(

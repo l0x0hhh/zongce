@@ -54,7 +54,7 @@ object ExportCheck {
         val targets = targetItems(items, targetYear)
 
         if (targets.isEmpty()) {
-            issues += Issue(Level.BLOCK, 0L, "还没有任何记录，没有东西可以导出。")
+            issues += Issue(Level.BLOCK, 0L, "还没有任何记录，没有东西可以导出")
             return issues
         }
 
@@ -100,7 +100,7 @@ object ExportCheck {
         if (incomplete > 0) {
             issues += Issue(
                 Level.WARN, 0L,
-                "有 $incomplete 条记录缺「级别 / 等级 / 角色」，导出的清单会显示「待补充」。建议现在补齐。"
+                "有 $incomplete 条记录缺「级别 / 等级 / 角色」，导出的清单会显示「待补充」，建议现在补齐"
             )
         }
 
@@ -119,7 +119,7 @@ object ExportCheck {
         if (excluded > 0) {
             issues += Issue(
                 Level.WARN, 0L,
-                "另有 $excluded 条记录属于其他评价学年，已从本次 $targetYear 导出中过滤。"
+                "另有 $excluded 条记录属于其他评价学年，已从本次 $targetYear 导出中过滤"
             )
         }
 

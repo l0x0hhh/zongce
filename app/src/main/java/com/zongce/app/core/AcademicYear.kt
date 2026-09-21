@@ -34,6 +34,17 @@ object AcademicYear {
     fun belongsTo(dateText: String, label: String): Boolean =
         runCatching { labelForDate(dateText) == label }.getOrDefault(false)
 
+    /**
+     * 一组获奖日期里出现过的全部学年，降序。
+     * 当前目标学年始终在列 —— 否则新学期刚开始、一条记录都没有时，
+     * 学年选择器会空掉，用户看不到"当前学年"这个锚点。
+     * 日期格式非法的记录直接跳过（它们本来就会被导出体检拦下）。
+     */
+    fun yearsOf(dateTexts: List<String>): List<String> =
+        (dateTexts.mapNotNull { runCatching { labelForDate(it) }.getOrNull() } + LABEL)
+            .distinct()
+            .sortedDescending()
+
     fun check(dateText: String): Check {
         val date = runCatching { LocalDate.parse(dateText) }
             .getOrNull() ?: return Check(Status.OUT_OF_RANGE, "日期格式不正确，应为 $DATE_FORMAT")
@@ -43,11 +54,11 @@ object AcademicYear {
         return if (date == start || date == end) {
             Check(
                 Status.BOUNDARY,
-                "边界日（${date}）：请确认证书上的获奖时间确实在这一天。已归入 $label 学年。",
+                "边界日（${date}）：请确认证书上的获奖时间确实在这一天，已归入 $label 学年",
                 label
             )
         } else {
-            Check(Status.OK, "已归入 $label 学年。", label)
+            Check(Status.OK, "已归入 $label 学年", label)
         }
     }
 
