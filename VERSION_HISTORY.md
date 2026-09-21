@@ -6,16 +6,18 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.2.0` |
-| 版本状态 | 已发布（tag `v1.2.0`） |
+| 版本号 | `1.2.1` |
+| 版本状态 | 准备发布（本批修小组件相册入口） |
 | 最近更新 | 2026-09-21 |
 | 最近文档提交 | `2513123` |
-| Android 应用版本 | `versionName 1.2.0` / `versionCode 1000003`（正式包；本地默认仍是 `2`） |
+| Android 应用版本 | `versionName 1.2.1`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number` |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
 | 工作区状态 | 干净，与 `origin/main` 同步（tip `2513123`）。发布 tag `v1.2.0` 指向 `dd78f45`，比 tip 早一个提交 —— 原因见「验证状态」里的说明 |
 
 ## 本版本更新
+
+- **修掉桌面小组件只显示「拍照」、看不到「相册」**：`JicunWidget.EntryTile` 内部把调用方传进来的 `defaultWeight()`（= `layout_weight = 1`）又叠了一个 `fillMaxSize()`，而后者会把宽度设成 `MATCH_PARENT`；同一个子项上"权重"和"宽度撑满"打架，LinearLayout 会让第一个子项独占整行、第二个被挤成 0 宽 —— 桌面上就只剩「拍照」一个。改为 `fillMaxHeight()`（宽度交给 weight 分配，这里只管高度）。**这是 Glance/RemoteViews 下的经典陷阱：权重必须与"高度撑满"配对，不能与"宽度撑满"配对。**（两个入口的接线本身没问题，`MainActivity` → `CaptureScreen` 的 `CAPTURE` / `PICK_PHOTOS` 分派一直是通的。）
 
 - **实现桌面小组件本体**（此前只有入口协议，见「已知未完成」）：新增 `widget/JicunWidget.kt`（Glance 界面）+ `widget/JicunWidgetReceiver.kt` + `res/xml/jicun_widget_info.xml`，在 `AndroidManifest.xml` 注册 `exported="false"` 的 receiver。组件是一张 3×2 的白色卡片：标题行（logo + 「暨存」）点开正常启动 App，「拍照」直接进系统相机、「相册」直接进图片选择器。点击只发带 action 的显式 Intent（`WIDGET_CAPTURE` / `WIDGET_PICK_PHOTOS`），拍照与相册逻辑仍由 `MainActivity` + `CaptureScreen` 处理，组件不碰数据库、不保存照片——与 ADR-0001 的约定一致。
   - 两处必须注意的实现细节：**入口 Intent 必须带 `FLAG_ACTIVITY_NEW_TASK`**（否则从桌面点开会另起一个 App 实例，而不是走 `singleTop` 的 `onNewIntent`）；**两个 action 必须是不同的字符串**（`PendingIntent` 的相等性只看 action/组件/requestCode，不看 extras，action 相同会互相覆盖，两个按钮就都变成同一个入口）。

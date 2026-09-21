@@ -24,6 +24,7 @@ import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
@@ -116,9 +117,13 @@ private fun EntryTile(
     modifier: GlanceModifier,
     onClick: Action
 ) {
+    // ⚠️ 这里必须是 fillMaxHeight()，不能写 fillMaxSize()。
+    // 调用方传进来的是 defaultWeight()（= layout_weight = 1），而 fillMaxSize() 会把宽度设成
+    // MATCH_PARENT；两者叠在同一个子项上，LinearLayout 会让第一个子项独占整行、第二个被挤成 0 宽
+    // —— 桌面上的表现就是"只看得到拍照，相册不见了"（宽度交给 weight 分配，这里只管高度）。
     Column(
         modifier = modifier
-            .fillMaxSize()
+            .fillMaxHeight()
             .background(ColorProvider(backgroundColor))
             .cornerRadius(16.dp)
             .clickable(onClick)
