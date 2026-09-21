@@ -14,19 +14,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -42,9 +39,11 @@ import com.zongce.app.ui.AppViewModel
 import com.zongce.app.ui.CaptureScreen
 import com.zongce.app.ui.EntryScreen
 import com.zongce.app.ui.ExportScreen
+import com.zongce.app.ui.JicunGlassNavigationBar
 import com.zongce.app.ui.ListScreen
 import com.zongce.app.ui.JicunTheme
 import com.zongce.app.ui.UpdateDialog
+import com.zongce.app.ui.defaultAppTabs
 import com.zongce.app.update.UpdateChecker
 
 private const val ROUTE_CAPTURE = "capture"
@@ -53,19 +52,43 @@ private const val ROUTE_EXPORT = "export"
 private const val ROUTE_ENTRY = "entry/{recordId}"
 
 class MainActivity : ComponentActivity() {
+    private var widgetAction by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        widgetAction = savedInstanceState?.getString("widgetAction")
+            ?: intent?.action?.takeIf(WidgetActions::isEntryAction)
         enableEdgeToEdge()
         setContent {
             JicunTheme {
-                Surface(color = MaterialTheme.colorScheme.background) { App() }
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    App(
+                        widgetAction = widgetAction,
+                        onWidgetActionConsumed = { widgetAction = null }
+                    )
+                }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        widgetAction = intent.action?.takeIf(WidgetActions::isEntryAction)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("widgetAction", widgetAction)
+        super.onSaveInstanceState(outState)
     }
 }
 
 @Composable
-private fun App(vm: AppViewModel = viewModel()) {
+private fun App(
+    vm: AppViewModel = viewModel(),
+    widgetAction: String? = null,
+    onWidgetActionConsumed: () -> Unit = {}
+) {
     val nav = rememberNavController()
     val items by vm.items.collectAsState()
     val updateState by vm.updateState.collectAsState()
@@ -73,32 +96,32 @@ private fun App(vm: AppViewModel = viewModel()) {
     val currentRoute = backStack?.destination?.route
     val context = LocalContext.current
 
-    val tabs = listOf(
-        Triple(ROUTE_CAPTURE, "拍摄", Icons.Default.PhotoCamera),
-        Triple(ROUTE_LIST, "记录", Icons.Default.List),
-        Triple(ROUTE_EXPORT, "导出", Icons.Default.Archive)
-    )
+    val tabs = defaultAppTabs()
+
+    androidx.compose.runtime.LaunchedEffect(widgetAction) {
+        if (widgetAction != null && currentRoute != ROUTE_CAPTURE) {
+            nav.navigate(ROUTE_CAPTURE) {
+                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
-            if (currentRoute in tabs.map { it.first }) {
-                NavigationBar {
-                    tabs.forEach { (route, label, icon) ->
-                        val selected = backStack?.destination?.hierarchy?.any { it.route == route } == true
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                nav.navigate(route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label) }
-                        )
+            if (currentRoute in tabs.map { it.route }) {
+                JicunGlassNavigationBar(
+                    tabs = tabs,
+                    selectedRoute = currentRoute,
+                    onSelect = { route ->
+                        nav.navigate(route) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                }
+                )
             }
         }
     ) { padding ->
@@ -116,6 +139,8 @@ private fun App(vm: AppViewModel = viewModel()) {
                     vm = vm,
                     recordCount = items.size,
                     recentItems = items.asReversed().take(3),
+                    widgetAction = widgetAction,
+                    onWidgetActionConsumed = onWidgetActionConsumed,
                     onGoEntry = { nav.navigate("entry/0") },
                     onCheckUpdate = vm::checkForUpdate
                 )

@@ -8,15 +8,16 @@ Zongce is a local-first Android tool for organizing materials used in student co
 
 ## Install
 
-The project is currently in early development. No official APK or app-store release is available yet. Build a debug APK from source:
+The project uses GitHub Actions for verification and tagged releases. Push a version tag to build a signed APK and publish a GitHub Release:
 
 ```powershell
 git clone https://github.com/l0x0hhh/zongce.git
 cd zongce
-.\gradlew.bat assembleDebug
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
-The APK is generated at `app/build/outputs/apk/debug/app-debug.apk`.
+When GitHub is slow or unavailable on a domestic network, configure a mainland object-storage or CDN mirror. Place a `latest.json` manifest at the mirror URL with `version`, `title`, `notes`, and `apkUrl` fields. The app checks the mirror first and falls back to GitHub Release when the mirror is unavailable.
 
 Android 8.0 or later is required. You can also open the repository root in Android Studio, wait for Gradle sync, and run the `app` module.
 
@@ -81,7 +82,7 @@ The project uses Kotlin, Jetpack Compose, Material 3, AndroidX, Room, and KSP. S
 
 Current version: `1.1.0-dev`
 
-The basic record, photo-management, academic-year validation, and ZIP-export workflows are implemented, but the project is still under development. Release signing, automated CI/CD, and full physical-device acceptance testing are not complete. See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session updates.
+The basic record, photo-management, academic-year validation, and ZIP-export workflows are implemented. CI, tagged release, and GitHub Release workflows are configured; release signing still requires repository Secrets. See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session updates.
 
 ## Help and Contributing
 

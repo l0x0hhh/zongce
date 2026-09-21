@@ -39,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.zongce.app.R
+import com.zongce.app.WidgetActions
 import com.zongce.app.data.RecordWithPhotos
 import java.io.File
 
@@ -62,6 +64,8 @@ fun CaptureScreen(
     vm: AppViewModel,
     recordCount: Int,
     recentItems: List<RecordWithPhotos>,
+    widgetAction: String? = null,
+    onWidgetActionConsumed: () -> Unit = {},
     onGoEntry: () -> Unit,
     onCheckUpdate: () -> Unit
 ) {
@@ -90,6 +94,21 @@ fun CaptureScreen(
         if (uris.isNotEmpty()) {
             vm.setPendingUris(uris)
             onGoEntry()
+        }
+    }
+
+    LaunchedEffect(widgetAction) {
+        when (widgetAction) {
+            WidgetActions.CAPTURE -> {
+                val (uri, _) = createCameraUri(context)
+                tmpUri = uri
+                takePicture.launch(uri)
+                onWidgetActionConsumed()
+            }
+            WidgetActions.PICK_PHOTOS -> {
+                pickPhotos.launch("image/*")
+                onWidgetActionConsumed()
+            }
         }
     }
 

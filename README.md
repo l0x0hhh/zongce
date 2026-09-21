@@ -8,7 +8,7 @@
 
 ## 安装
 
-当前项目处于早期开发阶段，暂未发布正式 APK 或应用商店版本。可以从源码构建 Debug APK：
+项目通过 GitHub Actions 自动检查和发布。推送版本标签后，Release 工作流会构建签名 APK 并上传到 GitHub Release：
 
 ```powershell
 git clone https://github.com/l0x0hhh/zongce.git
@@ -16,7 +16,23 @@ cd zongce
 .\gradlew.bat assembleDebug
 ```
 
-生成文件：`app/build/outputs/apk/debug/app-debug.apk`
+```powershell
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+国内网络访问 GitHub 不稳定时，建议给应用配置国内对象存储或 CDN 镜像。镜像根目录放置 `latest.json`，例如：
+
+```json
+{
+  "version": "1.2.0",
+  "title": "暨存 1.2.0",
+  "notes": "优化照片录入和导出流程",
+  "apkUrl": "https://download.example.com/jicun/jicun-1.2.0.apk"
+}
+```
+
+通过 Gradle 属性 `updateManifestUrl` 写入 APK 后，应用会优先请求镜像；镜像不可用时自动回退 GitHub Release。未配置镜像时，应用继续使用 GitHub Release。
 
 应用最低支持 Android 8.0（API 26）。也可以用 Android Studio 打开仓库根目录，等待 Gradle 同步后运行 `app` 模块。
 
@@ -81,7 +97,11 @@ Room 是本地数据源。Compose 页面通过 `AppViewModel` 读取和修改记
 
 当前版本：`1.1.0-dev`
 
-项目已完成基础记录、照片管理、学年校验和 ZIP 导出流程，但仍处于开发阶段。当前尚未完成正式发布签名、自动化 CI/CD 和完整真机验收。版本和会话更新记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
+项目已完成基础记录、照片管理、学年校验和 ZIP 导出流程。CI、标签发布和 GitHub Release 工作流已配置；正式发布仍需要在仓库 Secrets 中配置签名密钥。版本和会话更新记录见 [VERSION_HISTORY.md](VERSION_HISTORY.md)。
+
+### GitHub Actions Secrets
+
+Release 工作流需要配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。镜像上传可以接入对象存储服务，相关密钥只放在 GitHub Actions Secrets，不提交到仓库。
 
 ## 帮助与贡献
 

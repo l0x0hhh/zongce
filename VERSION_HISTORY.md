@@ -8,13 +8,16 @@
 | --- | --- |
 | 版本号 | `1.1.0-dev` |
 | 版本状态 | 开发中 |
-| 最近更新 | 2026-09-20 |
+| 最近更新 | 2026-09-21 |
 | 最近文档提交 | `9e58c24` |
-| Android 应用版本 | `versionName 1.0` / `versionCode 1` |
+| Android 应用版本 | `versionName 1.1.0` / `versionCode 2` |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
 
 ## 本版本更新
+
+- 增加 GitHub Actions CI、标签发布和签名 Release 工作流。
+- 增加国内镜像更新清单优先、GitHub Release 回退的更新源逻辑。
 
 - 初始化 Android 项目 Git 仓库并推送到 GitHub。
 - 增加中英文项目说明：`README.md`、`README.en.md`。

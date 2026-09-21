@@ -14,14 +14,41 @@ android {
         applicationId = "com.zongce.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = providers.gradleProperty("releaseVersionCode").orElse("2").get().toInt()
+        versionName = providers.gradleProperty("versionName").orElse("1.1.0").get()
+    }
+
+    // 本地没有签名参数时仍可构建 release；CI 通过 GitHub Secrets 注入正式签名。
+    signingConfigs {
+        create("release") {
+            val storeFilePath = providers.gradleProperty("signingStoreFile").orNull
+            if (!storeFilePath.isNullOrBlank()) {
+                storeFile = file(storeFilePath)
+                storePassword = providers.gradleProperty("signingStorePassword").orNull
+                keyAlias = providers.gradleProperty("signingKeyAlias").orNull
+                keyPassword = providers.gradleProperty("signingKeyPassword").orNull
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null) signingConfig = releaseSigning
+            buildConfigField(
+                "String",
+                "UPDATE_MANIFEST_URL",
+                "\"${providers.gradleProperty("updateManifestUrl").orNull.orEmpty()}\""
+            )
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        debug {
+            buildConfigField(
+                "String",
+                "UPDATE_MANIFEST_URL",
+                "\"${providers.gradleProperty("updateManifestUrl").orNull.orEmpty()}\""
+            )
         }
     }
 

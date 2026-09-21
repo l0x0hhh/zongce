@@ -20,44 +20,74 @@ data class UpdateInfo(
     val downloadUrl: String
 )
 
+private data class ReleasePayload(
+    val version: String,
+    val title: String,
+    val notes: String,
+    val downloadUrl: String
+)
+
 sealed class UpdateCheckResult {
     data class UpToDate(val currentVersion: String) : UpdateCheckResult()
     data class Available(val info: UpdateInfo) : UpdateCheckResult()
 }
 
 object UpdateChecker {
-    // 更新源使用项目的 GitHub Releases，Release 资产需包含可安装 APK。
+    // 国内镜像优先，镜像未配置或不可用时回退到 GitHub Release。
     private const val GITHUB_REPOSITORY = "l0x0hhh/zongce"
     private const val CONNECT_TIMEOUT_MS = 8_000
     private const val READ_TIMEOUT_MS = 15_000
 
     suspend fun check(): UpdateCheckResult = withContext(Dispatchers.IO) {
         val current = BuildConfig.VERSION_NAME
-        val url = URL("https://api.github.com/repos/$GITHUB_REPOSITORY/releases/latest")
-        val json = openConnection(url).inputStream.bufferedReader().use { it.readText() }
-        val release = JSONObject(json)
-        val remoteVersion = release.optString("tag_name").removePrefix("v").trim()
+        val payload = runCatching { readMirror() }.getOrElse { readGitHubRelease() }
+        val remoteVersion = payload.version
         if (remoteVersion.isBlank()) error("GitHub Release 没有版本号")
 
         if (compareVersions(remoteVersion, current) <= 0) {
             UpdateCheckResult.UpToDate(current)
         } else {
-            val apk = release.optJSONArray("assets")
-                ?.let { assets ->
-                    (0 until assets.length())
-                        .map { assets.getJSONObject(it) }
-                        .firstOrNull { it.optString("name").endsWith(".apk", ignoreCase = true) }
-                }
-                ?: error("最新 Release 没有 APK 文件")
             UpdateCheckResult.Available(
                 UpdateInfo(
                     version = remoteVersion,
-                    title = release.optString("name").ifBlank { "暨存更新" },
-                    notes = release.optString("body"),
-                    downloadUrl = apk.getString("browser_download_url")
+                    title = payload.title,
+                    notes = payload.notes,
+                    downloadUrl = payload.downloadUrl
                 )
             )
         }
+    }
+
+    private fun readMirror(): ReleasePayload {
+        val manifestUrl = BuildConfig.UPDATE_MANIFEST_URL.trim()
+        if (manifestUrl.isBlank()) error("未配置镜像更新源")
+        val json = openConnection(URL(manifestUrl)).inputStream.bufferedReader().use { it.readText() }
+        val manifest = JSONObject(json)
+        return ReleasePayload(
+            version = manifest.optString("version").removePrefix("v").trim(),
+            title = manifest.optString("title").ifBlank { "暨存更新" },
+            notes = manifest.optString("notes"),
+            downloadUrl = manifest.optString("apkUrl").ifBlank { error("镜像清单缺少 apkUrl") }
+        )
+    }
+
+    private fun readGitHubRelease(): ReleasePayload {
+        val url = URL("https://api.github.com/repos/$GITHUB_REPOSITORY/releases/latest")
+        val json = openConnection(url).inputStream.bufferedReader().use { it.readText() }
+        val release = JSONObject(json)
+        val apk = release.optJSONArray("assets")
+            ?.let { assets ->
+                (0 until assets.length())
+                    .map { assets.getJSONObject(it) }
+                    .firstOrNull { it.optString("name").endsWith(".apk", ignoreCase = true) }
+            }
+            ?: error("最新 Release 没有 APK 文件")
+        return ReleasePayload(
+            version = release.optString("tag_name").removePrefix("v").trim(),
+            title = release.optString("name").ifBlank { "暨存更新" },
+            notes = release.optString("body"),
+            downloadUrl = apk.getString("browser_download_url")
+        )
     }
 
     fun download(context: Context, info: UpdateInfo, onProgress: (Int) -> Unit): File {
