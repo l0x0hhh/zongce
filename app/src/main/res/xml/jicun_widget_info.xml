@@ -6,6 +6,9 @@
   initialLayout 必须指向 Glance 自带的占位布局，真实内容由 JicunWidget 渲染进去。
   previewLayout 是桌面组件选择器里显示的预览（API 31+）。不声明的话系统会拿应用图标
   当预览，用户在添加组件时根本看不到它长什么样。
+  另补 previewImage 预渲染位图（drawable-nodpi/widget_preview_entry_img.png，由 tmp/
+  gen_widget_previews.py 生成）：ColorOS 的「原子组件」选择器不渲染 previewLayout，
+  会回落到应用图标，位图兜底；两者共存。
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -13,6 +16,7 @@
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minHeight="110dp"
     android:minWidth="180dp"
+    android:previewImage="@drawable/widget_preview_entry_img"
     android:previewLayout="@layout/widget_preview_entry"
     android:resizeMode="horizontal|vertical"
     android:targetCellHeight="2"

@@ -65,6 +65,17 @@
                 android:resource="@xml/jicun_achievement_widget_info" />
         </receiver>
 
+        <!--
+            学年选择器透明壳：来自成果概览小组件的学年点击。小组件无法直接弹对话框，
+            所以落到这个透明 Activity 里弹单选 AlertDialog；选完写回存储、刷新小组件
+            即关闭，不进入 App 主界面。exported=false：只由小组件自身 Intent 启动。
+        -->
+        <activity
+            android:name=".widget.YearPickerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- 拍照临时文件 & 导出 ZIP 分享 -->
         <provider
             android:name="androidx.core.content.FileProvider"

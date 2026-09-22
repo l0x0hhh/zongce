@@ -3,6 +3,8 @@
   成果概览小组件在系统组件选择器里的预览（API 31+，android:previewLayout）。
   不声明的话系统会拿应用图标当预览，用户根本看不到组件长什么样。
   这里是静态预览：数字写死成示例值，只为让用户看清布局，不代表真实数据。
+  与真实 Glance 组件保持同一版式：学年是视觉焦点（22sp 加粗主色 + ▾ 下拉暗示），
+  条成果数字降为 18sp；原来头部右侧的左右箭头已移除，切学年改为点击学年弹选择器。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -10,7 +12,7 @@
     android:layout_height="110dp"
     android:background="@drawable/widget_preview_bg"
     android:orientation="vertical"
-    android:padding="12dp"
+    android:padding="14dp"
     tools:ignore="HardcodedText">
 
     <LinearLayout
@@ -33,43 +35,40 @@
             android:textColor="#FF18202B"
             android:textSize="13sp"
             android:textStyle="bold" />
+    </LinearLayout>
 
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="5dp"
-            android:text="‹"
-            android:textColor="#FF18202B"
-            android:textSize="15sp"
+            android:text="2025-2026"
+            android:textColor="#FF2D5F9A"
+            android:textSize="22sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="2dp"
-            android:text="2026-2027"
+            android:layout_marginStart="6dp"
+            android:text="▾"
             android:textColor="#FF5D6875"
-            android:textSize="11sp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="5dp"
-            android:text="›"
-            android:textColor="#FF18202B"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            android:textSize="12sp" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="6dp"
         android:gravity="bottom"
         android:orientation="horizontal">
 
@@ -78,7 +77,7 @@
             android:layout_height="wrap_content"
             android:text="12"
             android:textColor="#FF2D5F9A"
-            android:textSize="26sp"
+            android:textSize="18sp"
             android:textStyle="bold" />
 
         <TextView
@@ -93,10 +92,15 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:text="最近 国家励志奖学金"
         android:textColor="#FF18202B"
         android:textSize="11sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 </LinearLayout>
