@@ -10,6 +10,7 @@ import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipFile
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -107,7 +108,7 @@ class ExportPlanTest {
         }
     }
 
-    @Test
+    @Test(timeout = 5000)
     fun baseNameEndingInSuffixPatternStillTerminates() {
         // baseName 满 36 且以 "_2" 结尾时再撞名：seq=2 会算出同名（去重必须再转一圈），
         // seq=3 才得到新名 —— 断言既防"优化"掉 while 去重，也防死循环。
@@ -205,5 +206,125 @@ class ExportPlanTest {
     @Test
     fun zipFileNameFollowsConvention() {
         assertEquals("综测证明材料_2025-2026学年.zip", zipFileName("2025-2026"))
+    }
+
+    // ---------- checklist 文案（回归评审 W1：此前零断言，接线改错不会红） ----------
+
+    @Test
+    fun checklistListsEveryPhotoWithItsZipPath() {
+        val items = listOf(item(1, "德育", "数学建模", 2))
+
+        val text = checklist(items, plan(items), "2025-2026")
+
+        // "照片："行与 zip 内条目名逐字一致（含五育前缀）——这是用户按图索骥的索引，
+        // 若 checklist 内部的 groupBy 接线改错 key 或改用 first，这里必须红。
+        assertTrue(text.contains("照片：德育/20260315_数学建模_一等奖.jpg"))
+        assertTrue(text.contains("照片：德育/20260315_数学建模_一等奖_2.jpg"))
+    }
+
+    @Test
+    fun checklistHeaderCarriesTargetYearAndRecordCount() {
+        val items = listOf(item(1, "德育", "数学建模", 1), item(2, "智育", "优秀学生", 0))
+
+        val text = checklist(items, plan(items), "2025-2026")
+
+        assertTrue(text.contains("综测填报核对清单 · 2025-2026 学年"))
+        assertTrue(text.contains("共 2 条记录"))
+    }
+
+    @Test
+    fun checklistFallsBackForBlankFields() {
+        val blank = RecordWithPhotos(
+            record = AwardRecord(id = 1, wuyu = "德育", awardName = "", awardDate = "", grade = ""),
+            photos = emptyList()
+        )
+        val items = listOf(blank)
+
+        val text = checklist(items, plan(items), "2025-2026")
+
+        assertTrue(text.contains("（缺获奖名称）"))
+        assertTrue(text.contains("时间：待补充"))
+        assertTrue(text.contains("级别：待补充"))
+        assertTrue(text.contains("等级：待补充"))
+        assertTrue(text.contains("角色：待补充"))
+        assertTrue(text.contains("发证单位：—"))
+    }
+
+    // ---------- exportTo 条目与失败路径（回归评审 W3） ----------
+
+    @Test
+    fun exportToWritesPhotoEntriesFromPlan() {
+        val dir = Files.createTempDirectory("export-plan-test").toFile()
+        try {
+            val entries = plan(listOf(item(1, "德育", "数学建模", 1)))
+            val zip = ZipExporter.exportTo(
+                outDir = dir,
+                zipName = "test.zip",
+                plan = entries,
+                checklistText = "核对",
+                photoBytes = { byteArrayOf(1, 2, 3) },
+                onProgress = { _, _ -> }
+            )
+
+            ZipFile(zip).use { zf ->
+                assertTrue("zip 内应含照片条目 ${entries.single().zipPath}", zf.getEntry(entries.single().zipPath) != null)
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun exportToCleansUpPartFileWhenPhotoFails() {
+        val dir = Files.createTempDirectory("export-plan-test").toFile()
+        try {
+            val entries = plan(listOf(item(1, "德育", "数学建模", 1)))
+
+            val error = assertThrows(IllegalStateException::class.java) {
+                ZipExporter.exportTo(
+                    outDir = dir,
+                    zipName = "test.zip",
+                    plan = entries,
+                    checklistText = "核对",
+                    photoBytes = { throw IllegalStateException("无法解码照片") },
+                    onProgress = { _, _ -> }
+                )
+            }
+
+            assertEquals("无法解码照片", error.message)
+            // 失败路径必须清掉 .part 半成品，正式 zip 也不许存在（否则会留下可误用的坏包）
+            assertTrue(dir.listFiles().orEmpty().none { it.name.endsWith(".part") })
+            assertTrue(dir.listFiles().orEmpty().none { it.name == "test.zip" })
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    // ---------- 清空策略（回归评审 W5：钉成显式决策） ----------
+
+    @Test
+    fun exportToClearsOnlyTopLevelFilesNotDirectories() {
+        val dir = Files.createTempDirectory("export-plan-test").toFile()
+        try {
+            File(dir, "上一版.zip").writeBytes(byteArrayOf(0))
+            val subDir = File(dir, "残留子目录").apply { mkdirs() }
+            File(subDir, "里面的文件.txt").writeBytes(byteArrayOf(0))
+
+            ZipExporter.exportTo(
+                outDir = dir,
+                zipName = "test.zip",
+                plan = emptyList(),
+                checklistText = "核对",
+                photoBytes = { byteArrayOf(0) },
+                onProgress = { _, _ -> }
+            )
+
+            // 顶层旧文件被清掉；子目录因 File.delete() 对非空目录静默失败而保留 ——
+            // 「只清一层、不递归」是显式行为决策，将来若有人改成递归删除，此测试应变红要求重新评审。
+            assertTrue(!File(dir, "上一版.zip").exists())
+            assertTrue(subDir.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }
