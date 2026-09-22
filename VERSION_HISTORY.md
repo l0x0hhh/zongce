@@ -6,16 +6,32 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.2.1` |
-| 版本状态 | 准备发布（本批修小组件相册入口） |
-| 最近更新 | 2026-09-21 |
-| 最近文档提交 | `2513123` |
-| Android 应用版本 | `versionName 1.2.1`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number` |
+| 版本号 | `1.3.3` |
+| 版本状态 | 已打 tag `v1.3.3` 走 CI 发布。本地签名包因签名口令暂未取回而未做（口令按交接单已存入密码管理器，临时文件已删）；真机验证直接用 CI 签名包完成，与发版并行找回口令 |
+| 最近更新 | 2026-09-22 |
+| Android 应用版本 | `versionName 1.3.3`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本地验证包手动传 `-PreleaseVersionCode=1000009`（线上 v1.3.2 = run #8 = 1000008，本地包须更高才能覆盖安装） |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 干净，与 `origin/main` 同步（tip `2513123`）。发布 tag `v1.2.0` 指向 `dd78f45`，比 tip 早一个提交 —— 原因见「验证状态」里的说明 |
+| 工作区状态 | 与 `origin/main` 同步（tip `554fde9`）。上一版 `v1.3.2`（当前线上，指向 `3d82a23`） |
 
-## 本版本更新
+## 本版本更新（v1.3.3，未发布）
+
+> v1.3.0–v1.3.2（设计系统重构、「成果」板块、小组件箭头切换与 previewLayout）由并行会话交付，详见 git log `e7ec6ba..3d82a23`。
+
+- **成果概览小组件四项修复**（`554fde9`）：
+  - 布局重排：头部置顶 + 纵向 `defaultWeight()` 弹性空隙均匀分布，组件拉大后内容不再堆在左上角。defaultWeight 只用于 Column 纵向（v1.2.1 的 Row 权重坑不复发）。
+  - 学年成为视觉焦点：11sp 灰字 → 22sp 加粗主色，右侧加 "▾" 提示可点；条成果数字 26sp → 18sp 让位。
+  - 交互改造：删除左右箭头切换（`SwitchYearAction` / `YearArrow` / `DIRECTION` / `shift` 全部移除），改为点击学年弹透明壳 `YearPickerActivity` 单选对话框——选完写回存储、`updateAll()` 刷新组件即关闭，不进 App；学年不足 2 个时提示「无需切换」。Manifest 注册 `exported=false` + `excludeFromRecents` + `Theme.Translucent.NoTitleBar`。
+  - 预览修复根因：**ColorOS「原子组件」选择器不渲染 `previewLayout`，直接回落成应用图标**。补两张 540×330 `previewImage` 位图（`drawable-nodpi/`）兜底，previewLayout 同步新设计共存；位图由 `tmp/gen_widget_previews.py`（Pillow + msyh.ttc）生成——微软雅黑缺 U+25BE 字形，"▾" 需画多边形而非字符。
+- **架构评审 P1 修复**（`84dd7c7`，评审结论见 `docs/` 与 2026-09-22 会话记录）：
+  - `allowBackup=false`：证书照片属个人隐私材料，不再参与系统云备份（推翻 v1.2.1 时「local-first 唯一兜底」的旧决策）。
+  - `AwardDao.insertRecord` 弃用 `REPLACE`：REPLACE 是先删后插，主键撞上会经 `ON DELETE CASCADE` 静默清空该记录全部照片；回归默认 ABORT。
+  - Room 导出 schema 基线到 `app/schemas/`（`exportSchema=true` + ksp arg），为将来写迁移做准备（此前 version=1 无基线，首改字段即启动崩溃）。
+  - `checkBeforeExport` 移入协程、磁盘 stat 切 IO 线程（此前主线程逐张 stat 卡帧，是全仓唯一真实主线程磁盘 IO）。
+  - `ExportState.Confirm` 直接携带导出范围，删除裸字段 `pendingExport`；Entry/List/Export 三屏不再自建 `PhotoStore`（统一走 `vm.photoFile`）；导出学年列表与范围计数与打包同源（`AcademicYear.yearsOf` / `ExportCheck.targetItems`）。
+  - `file_paths.xml` 移除无引用的 photos files-path，收窄 FileProvider 共享面。
+
+## v1.2.1 更新（历史）
 
 - **修掉桌面小组件只显示「拍照」、看不到「相册」**：`JicunWidget.EntryTile` 内部把调用方传进来的 `defaultWeight()`（= `layout_weight = 1`）又叠了一个 `fillMaxSize()`，而后者会把宽度设成 `MATCH_PARENT`；同一个子项上"权重"和"宽度撑满"打架，LinearLayout 会让第一个子项独占整行、第二个被挤成 0 宽 —— 桌面上就只剩「拍照」一个。改为 `fillMaxHeight()`（宽度交给 weight 分配，这里只管高度）。**这是 Glance/RemoteViews 下的经典陷阱：权重必须与"高度撑满"配对，不能与"宽度撑满"配对。**（两个入口的接线本身没问题，`MainActivity` → `CaptureScreen` 的 `CAPTURE` / `PICK_PHOTOS` 分派一直是通的。）
 
