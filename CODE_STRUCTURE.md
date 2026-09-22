@@ -85,9 +85,9 @@ AppViewModel
 
 | 文件 | 职责 |
 | --- | --- |
-| `update/UpdateChecker.kt` | 读取镜像清单或 GitHub Release、比较版本号、下载 APK 并提供安装用 Uri |
+| `update/UpdateChecker.kt` | 并发查询镜像清单与 GitHub Release、取版本更高者、比较版本号、下载 APK 并提供安装用 Uri |
 
-更新源优先级：`BuildConfig.UPDATE_MANIFEST_URL`（构建时由 Gradle 属性 `updateManifestUrl` 写入）→ 未配置或读取失败时回退 GitHub Release。改动更新逻辑时，注意同时检查下载临时文件（`.part`）与 FileProvider 路径（`res/xml/file_paths.xml`）。
+更新源策略：镜像清单（`BuildConfig.UPDATE_MANIFEST_URL`，构建时由 Gradle 属性 `updateManifestUrl` 写入）与 GitHub Release **并发请求、取版本号更高者**；镜像只是国内更快的下载源而非唯一权威，只有一边可达也照样能检查更新，两边都失败才报错。改动更新逻辑时，注意同时检查下载临时文件（`.part`）与 FileProvider 路径（`res/xml/file_paths.xml`）。
 
 ## UI 与业务编排
 

@@ -25,7 +25,7 @@ The pain of assessment filing shows up at the last minute: certificates pile up 
 - **Normalised file names**: `award_date_award_name_grade.jpg`, with sorting that matches chronological order.
 - **Image handling**: EXIF rotation correction, HEIC to JPEG conversion, and automatic compression below 3.5 MB at export time.
 - **Originals kept forever**: imported photos stay in app-private storage; export converts a copy instead of rewriting the original.
-- **In-app update check**: mirror manifest first, GitHub Release fallback, then hands the APK to the system installer.
+- **In-app update check**: the mirror manifest and the GitHub Release are queried concurrently and the higher version wins (the mirror is just a faster download source for users in China); the APK is then handed to the system installer.
 
 ## What the exported package looks like
 
@@ -50,8 +50,8 @@ comprehensive-assessment-materials_2025-2026.zip
 - Award records live in a local Room (SQLite) database; original photos live in app-private `filesDir/photos/`, named by content hash and mapped to readable names only at export time.
 - No account, no sign-in, and **no feature that uploads materials to a server**.
 - Only two permissions are requested: `INTERNET` (update check only) and `REQUEST_INSTALL_PACKAGES` (installing a downloaded update). Capture is handled by the system camera app and import by the system photo picker, so **no camera or storage permission is needed**.
-- The only outbound request is the update check: it reads the configured mirror `latest.json` and falls back to the GitHub Release API when the mirror is missing or unavailable. It fetches a version number and a download URL, and sends no material content.
-- ⚠️ **System cloud backup**: the manifest sets `android:allowBackup="true"`, so Android's automatic backup may include the app database and photo copies (depending on system settings). **This has nothing to do with a self-hosted server**: the backup is performed by the operating system into the user's own phone account (Google Drive, or a vendor cloud such as Huawei or Xiaomi). This project has no server and needs none, and the developer cannot access those backups. The app never uploads anything by itself, but "there is a system backup" is not the same as "the data exists only on this device".
+- The only outbound request is the update check: the mirror `latest.json` (when configured) and the GitHub Release API are queried concurrently and the higher version wins. It fetches a version number and a download URL, and sends no material content.
+- **System cloud backup is off**: the manifest sets `android:allowBackup="false"`, so Android's automatic backup never includes the app database or photo copies (they never reach Google Drive or a vendor cloud such as Huawei or Xiaomi). This project has no server and needs none; the data physically exists only on this device, unless the user explicitly shares an exported ZIP.
 - Never publish unredacted certificate photos, exported ZIPs, logs, or screenshots — they may contain names, student IDs, identity documents, and other personal data.
 
 ## Install
@@ -64,7 +64,7 @@ You can also download straight from the product page: **https://jicun.netlify.ap
 
 ### Behind a slow network
 
-When GitHub is slow or unreachable, host your own mirror: place a `latest.json` at the mirror root and build with the Gradle property `updateManifestUrl` so the app reads the mirror first and falls back to GitHub Release automatically.
+When GitHub is slow or unreachable, host your own mirror: place a `latest.json` at the mirror root and build with the Gradle property `updateManifestUrl`. The app queries the mirror and the GitHub Release concurrently and picks the higher version — the mirror's value is being a faster download source in China, not the sole authority.
 
 ```json
 {
@@ -149,7 +149,7 @@ A release goes in this order (★ = the only two manual steps):
 
 ## Current version
 
-`1.2.1` (app `versionName 1.2.1`). See [VERSION_HISTORY.md](VERSION_HISTORY.md) for version and session history.
+The current version is tracked in [VERSION_HISTORY.md](VERSION_HISTORY.md) (the app `versionName` lives in `app/build.gradle.kts`), which also records the development session history.
 
 ## Feedback and contributions
 
