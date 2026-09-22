@@ -2,9 +2,10 @@
 <!--
   成果概览小组件在系统组件选择器里的预览（API 31+，android:previewLayout）。
   不声明的话系统会拿应用图标当预览，用户根本看不到组件长什么样。
-  这里是静态预览：数字写死成示例值，只为让用户看清布局，不代表真实数据。
-  与真实 Glance 组件保持同一版式：学年是视觉焦点（22sp 加粗主色 + ▾ 下拉暗示），
-  条成果数字降为 18sp；原来头部右侧的左右箭头已移除，切学年改为点击学年弹选择器。
+  这里是静态预览：内容写死成示例值，只为让用户看清布局，不代表真实数据。
+  与真实 RemoteViews 组件（widget_achievement_list.xml）保持同一版式：
+  头部品牌行 + ‹ 学年 › 切换器，主体是成果列表（这里示意两条）。
+  预览画布只有 110dp 高，条目间距比真实布局略收紧，避免示例内容被裁切。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -12,9 +13,10 @@
     android:layout_height="110dp"
     android:background="@drawable/widget_preview_bg"
     android:orientation="vertical"
-    android:padding="14dp"
+    android:padding="12dp"
     tools:ignore="HardcodedText">
 
+    <!-- 头部：logo + 暨存 + 行尾的 ‹ 学年 › 切换器。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -35,72 +37,121 @@
             android:textColor="#FF18202B"
             android:textSize="13sp"
             android:textStyle="bold" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="4dp"
+            android:text="‹"
+            android:textColor="#FF18202B"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2026-2027"
+            android:textColor="#FF5D6875"
+            android:textSize="11sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="4dp"
+            android:text="›"
+            android:textColor="#FF18202B"
+            android:textSize="15sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
+    <!-- 示例条目一：德育（蓝点）。 -->
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="2025-2026"
-            android:textColor="#FF2D5F9A"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            android:text="●"
+            android:textColor="#FF3B7DD8"
+            android:textSize="10sp" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="▾"
-            android:textColor="#FF5D6875"
-            android:textSize="12sp" />
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="校级数学建模一等奖"
+                android:textColor="#FF18202B"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="德育 · 2026-05-12"
+                android:textColor="#FF5D6875"
+                android:textSize="10sp" />
+        </LinearLayout>
     </LinearLayout>
 
+    <!-- 示例条目二：美育（橙点）。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:gravity="bottom"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="12"
-            android:textColor="#FF2D5F9A"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:text="●"
+            android:textColor="#FFE0603C"
+            android:textSize="10sp" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:text="条成果 · 覆盖 4 育"
-            android:textColor="#FF5D6875"
-            android:textSize="11sp" />
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="院级征文比赛二等奖"
+                android:textColor="#FF18202B"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="美育 · 2026-03-20"
+                android:textColor="#FF5D6875"
+                android:textSize="10sp" />
+        </LinearLayout>
     </LinearLayout>
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:text="最近 国家励志奖学金"
-        android:textColor="#FF18202B"
-        android:textSize="11sp" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
 </LinearLayout>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  成果概览小组件（RemoteViews 版）的真实布局：
+  头部（logo + 暨存 + ‹ 学年 › 切换器）+ 可滑动的成果 ListView + 空态占位。
+  ListView 由 AchievementListService 喂数，组件拉大后自动多显示几条（resizeMode 已配）。
+  学年文字与箭头状态色由 AchievementListWidget 在代码里设置。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_achievement_bg"
+    android:orientation="vertical"
+    android:padding="12dp"
+    tools:ignore="HardcodedText">
+
+    <!-- 头部：品牌行 + 学年切换器，箭头点击由代码挂 PendingIntent。 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/widget_logo" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text="@string/app_name"
+            android:textColor="#FF18202B"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <!-- 占位，把学年切换器推到行尾。 -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/widget_prev_year"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="6dp"
+            android:text="‹"
+            android:textColor="#FF18202B"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_year"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#FF5D6875"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_next_year"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="6dp"
+            android:text="›"
+            android:textColor="#FF18202B"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 成果列表：占满剩余空间，条目来自 AchievementListService。 -->
+    <ListView
+        android:id="@+id/achievement_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="#FFE3E8EE"
+        android:dividerHeight="1dp"
+        android:paddingTop="4dp" />
+
+    <!-- 空态：setEmptyView 接管显隐（列表空时显示、非空时隐藏），布局里默认 gone。 -->
+    <TextView
+        android:id="@+id/achievement_empty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="还没有记录\n拍下证书就会出现在这里"
+        android:textColor="#FF5D6875"
+        android:textSize="11sp"
+        android:visibility="gone" />
+</LinearLayout>

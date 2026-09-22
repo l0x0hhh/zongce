@@ -6,15 +6,25 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.3.3` |
-| 版本状态 | 已打 tag `v1.3.3` 走 CI 发布。本地签名包因签名口令暂未取回而未做（口令按交接单已存入密码管理器，临时文件已删）；真机验证直接用 CI 签名包完成，与发版并行找回口令 |
+| 版本号 | `1.3.4` |
+| 版本状态 | 已打 tag `v1.3.4` 走 CI 发布（CI 签名路线连续第三版）。签名口令仍未取回，密码管理器是唯一明文来源 |
 | 最近更新 | 2026-09-22 |
-| Android 应用版本 | `versionName 1.3.3`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本地验证包手动传 `-PreleaseVersionCode=1000009`（线上 v1.3.2 = run #8 = 1000008，本地包须更高才能覆盖安装） |
+| Android 应用版本 | `versionName 1.3.4`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本地验证包手动传 `-PreleaseVersionCode=1000009`（线上 v1.3.2 = run #8 = 1000008，本地包须更高才能覆盖安装） |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 与 `origin/main` 同步（tip `554fde9`）。上一版 `v1.3.2`（当前线上，指向 `3d82a23`） |
+| 工作区状态 | 与 `origin/main` 同步。上一版 `v1.3.3`（指向 `256a122`，CI 发布于 2026-09-22） |
 
-## 本版本更新（v1.3.3，未发布）
+## 本版本更新（v1.3.4）
+
+- **成果概览小组件从 Glance 迁移到传统 RemoteViews：主体改为可滑动的成果列表**（本次改动的直接动机是用户三个诉求：① 组件内切学年不要再"跳进 App"；② 修复"选完学年组件不刷新"；③ 想把成果拉下来、显示不全就滑动。其中 ③ 是硬约束——**Glance 不支持滚动列表**，要把 ListView 映射进桌面小组件只有传统 RemoteViews 的集合视图一条路，故成果组件整体迁移；快速录入组件 `JicunWidget` 是纯入口无列表，留在 Glance 不动，仓库内自此两套小组件技术并存）。
+  - **新增 `widget/AchievementListWidget.kt`**（`AppWidgetProvider`）：头部 `‹ 学年 ›` 箭头点击发广播回自身（`FLAG_IMMUTABLE`，targetSdk 35 强制），`WidgetYearStore.shift` 落盘后就地重渲染——全程不出桌面，`YearPickerActivity` 透明壳时代结束；到头方向的箭头置灰提示（仍可点、原地不动）。`setRemoteAdapter` 的 Intent 带 `System.nanoTime()` 唯一 Uri——**Intent 相等时系统复用旧 Adapter，`onDataSetChanged` 不跑、列表不刷新，这是 RemoteViews 经典坑**；三参重载（`appWidgetId` 版）API 31+ 才有，低版本走旧签名。列表挂 `setEmptyView` 空态、`setPendingIntentTemplate` + 条目 fill-in Intent 点开成果 tab。提供 `pushUpdate()` 供 `AppViewModel.refreshWidget()` 调用（切 `Dispatchers.IO`，内部查库）。
+  - **新增 `widget/AchievementListService.kt`**（`RemoteViewsService`）：`onDataSetChanged` 查全量记录 → `AcademicYear.yearsOf` 算学年 → 按 `WidgetYearStore` 选中学年过滤、获奖日期倒序；条目为五育色点 + 名称 + "五育 · 日期" 副信息。**小组件由桌面（launcher）进程渲染，拿不到 Compose 主题，五育色值只能显式写死**（与 Theme.kt 浅色版一致）。`onDataSetChanged`/`getViewAt` 在主线程回调里 `runBlocking` 查库：个人记录几十条以内（<10ms），不值得异步桥。Manifest 注册 `BIND_REMOTEVIEWS_SERVICE` 签名权限——只有系统能绑定，第三方 App 拉不到用户数据。
+  - **新增 `widget/WidgetYearStore.kt`**：从旧 Glance 版的 `internal object AchievementYearStore` 迁为顶层 public（Provider 与 Service 两个使用方）。**关键修复：写盘 `apply()`（异步）→ `commit()`（同步）**——旧版选完学年立刻刷新组件时，另一处可能还读到磁盘旧值，这正是"选完学年组件没变化"的根因；SharedPreferences 名与 key 原样保留，老用户已选学年不丢。存的学年因删记录而不存在时回落当前学年，避免永远停在空学年。
+  - **删除 3 个文件**：`JicunAchievementWidget.kt`（Glance 版）、`JicunAchievementWidgetReceiver.kt`、`YearPickerActivity.kt`。Manifest 的 receiver 换成 `AchievementListWidget`。
+  - 布局三件套：`widget_achievement_list.xml`（头部品牌行 + ListView + 空态）、`widget_achievement_item.xml`（色点 + 名称 + 副信息）、`drawable/widget_achievement_bg.xml`（白色圆角卡）。`jicun_achievement_widget_info.xml` 的 `initialLayout` 直接指向真实列表布局；`previewLayout`（API 31+ 启动器）与 `previewImage` 位图（ColorOS「原子组件」选择器只认位图，见 v1.3.3）同步改为列表版示意（由 `tmp/gen_widget_previews.py` 重新生成）。
+  - 列表数据变化仍走 `updatePeriodMillis=0` + App 保存/删除记录后主动推送，不轮询。验证：`testDebugUnitTest --rerun` 43 用例全绿 + `assembleDebug` 通过；RemoteViews 组件无独立可单测逻辑，真机行为（滑动、切学年、拉伸）待装包确认。
+
+## v1.3.3 更新（历史）
 
 > v1.3.0–v1.3.2（设计系统重构、「成果」板块、小组件箭头切换与 previewLayout）由并行会话交付，详见 git log `e7ec6ba..3d82a23`。
 

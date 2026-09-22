@@ -3,7 +3,6 @@ package com.zongce.app.ui
 
 import android.app.Application
 import android.net.Uri
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zongce.app.core.FileNameRule
@@ -18,7 +17,7 @@ import com.zongce.app.export.ZipExporter
 import com.zongce.app.update.UpdateCheckResult
 import com.zongce.app.update.UpdateChecker
 import com.zongce.app.update.UpdateInfo
-import com.zongce.app.widget.JicunAchievementWidget
+import com.zongce.app.widget.AchievementListWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -150,13 +149,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * 数据变了就把「成果概览」小组件推一次。
-     * 它不做定时轮询（updatePeriodMillis = 0），桌面上的数字靠这里和 App 保持一致。
+     * 它不做定时轮询（updatePeriodMillis = 0），桌面上的列表靠这里和 App 保持一致。
      * 只刷成果组件 —— 「快速录入」组件是纯入口、不显示数据，没有刷新的必要。
      * 失败只吞掉：小组件刷不出来，不该影响"把这条获奖记下来"这件正事。
+     * pushUpdate 里会查一次库，所以放到 IO 线程执行。
      */
     private fun refreshWidget() {
-        viewModelScope.launch {
-            runCatching { JicunAchievementWidget().updateAll(getApplication()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { AchievementListWidget.pushUpdate(getApplication()) }
         }
     }
 

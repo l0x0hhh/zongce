@@ -49,12 +49,13 @@
         </receiver>
 
         <!--
-            桌面小组件之二：成果概览。与上面那个是彼此独立的组件，用户可在桌面上分别添加。
+            桌面小组件之二：成果概览（RemoteViews 版）。与上面那个是彼此独立的组件，用户可在桌面上分别添加。
             本组件会读 Room 做展示（只读，绝不写入），数据变化时由 AppViewModel 主动推送刷新；
             这与上面那个"不碰数据库"的约束不同，理由见 docs/adr/0002。
+            切学年不再弹 Activity：头部 ‹ › 箭头广播回本接收器就地切换。
         -->
         <receiver
-            android:name=".widget.JicunAchievementWidgetReceiver"
+            android:name=".widget.AchievementListWidget"
             android:exported="false"
             android:label="@string/achievement_widget_label">
             <intent-filter>
@@ -66,15 +67,18 @@
         </receiver>
 
         <!--
-            学年选择器透明壳：来自成果概览小组件的学年点击。小组件无法直接弹对话框，
-            所以落到这个透明 Activity 里弹单选 AlertDialog；选完写回存储、刷新小组件
-            即关闭，不进入 App 主界面。exported=false：只由小组件自身 Intent 启动。
+            成果概览小组件的列表数据源（RemoteViewsService）。
+            BIND_REMOTEVIEWS_SERVICE 是系统签名权限：声明后只有系统（launcher）能绑定，
+            第三方 App 无法冒充桌面进程拉取用户数据。
         -->
-        <activity
-            android:name=".widget.YearPickerActivity"
+        <service
+            android:name=".widget.AchievementListService"
             android:exported="false"
-            android:excludeFromRecents="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+            android:permission="android.permission.BIND_REMOTEVIEWS_SERVICE">
+            <intent-filter>
+                <action android:name="android.appwidget.action.REMOTEVIEWS_SERVICE" />
+            </intent-filter>
+        </service>
 
         <!-- 拍照临时文件 & 导出 ZIP 分享 -->
         <provider

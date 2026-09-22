@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  成果概览小组件列表的单个条目：五育色点 + 名称 + 五育/日期副信息。
+  色点颜色由 AchievementListService 按记录的五育归属在代码里设置；
+  点整条条目 → fill-in Intent + 组件本体的模板 → 打开 App 成果页。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/widget_item_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="2dp"
+    android:paddingVertical="8dp"
+    tools:ignore="HardcodedText">
+
+    <!-- 五育色点：默认兜底灰，真实颜色由代码 setTextColor 覆盖。 -->
+    <TextView
+        android:id="@+id/widget_item_dot"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="●"
+        android:textColor="#FF8E8E93"
+        android:textSize="10sp" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_item_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text=""
+            android:textColor="#FF18202B"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/widget_item_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text=""
+            android:textColor="#FF5D6875"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

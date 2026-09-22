@@ -6,7 +6,8 @@
   规格：3×2 格（约 180×110dp），可横向/纵向拉伸；只在桌面出现。
   updatePeriodMillis=0：不靠定时轮询，由 AppViewModel.refreshWidget() 在保存/删除记录后主动推送。
   本组件对 Room 只读，不写、不参与照片生命周期（见 docs/adr/0002）。
-  initialLayout 必须指向 Glance 自带的占位布局，真实内容由 JicunAchievementWidget 渲染进去。
+  组件已从 Glance 迁移到传统 RemoteViews：initialLayout 直接指向真实布局
+  （widget_achievement_list），列表主体可垂直滑动，头部 ‹ 学年 › 箭头就地切学年。
   previewImage 是预渲染位图（drawable-nodpi/widget_preview_achievement_img.png，由 tmp/
   gen_widget_previews.py 生成）：ColorOS 的「原子组件」选择器不渲染 previewLayout，会回落到
   应用图标，位图兜底；API 31+ 支持的启动器继续用 previewLayout，两者共存。
@@ -14,7 +15,7 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:description="@string/achievement_widget_description"
-    android:initialLayout="@layout/glance_default_loading_layout"
+    android:initialLayout="@layout/widget_achievement_list"
     android:minHeight="110dp"
     android:minWidth="180dp"
     android:previewImage="@drawable/widget_preview_achievement_img"
