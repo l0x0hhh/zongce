@@ -50,17 +50,17 @@ import com.zongce.app.export.ExportCheck
 fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
     val context = LocalContext.current
     val state by vm.exportState.collectAsState()
+    // 学年列表只由 AcademicYear.yearsOf 生成，不再在 UI 里复刻一遍（保证与组件/成果页同源）。
     val availableYears = remember(items) {
-        (items.mapNotNull { item ->
-            item.record.awardDate.takeIf { it.isNotBlank() }
-                ?.let { AcademicYear.check(it).academicYear.takeIf(String::isNotBlank) }
-        } + AcademicYear.targetLabel()).distinct().sortedDescending()
+        AcademicYear.yearsOf(items.map { it.record.awardDate })
     }
     var targetYear by remember { mutableStateOf(AcademicYear.targetLabel()) }
     LaunchedEffect(availableYears) {
         if (targetYear !in availableYears) targetYear = availableYears.first()
     }
-    val selectedCount = items.count { AcademicYear.belongsTo(it.record.awardDate, targetYear) }
+    // 范围计数必须与打包范围同源：直接问 ExportCheck.targetItems，绝不另写谓词。
+    // 它会把空日期/越界记录也算进来，正好和实际打包范围一致 —— 这正是本次修复的目的。
+    val selectedCount = ExportCheck.targetItems(items, targetYear).size
 
     Column(
         modifier = Modifier

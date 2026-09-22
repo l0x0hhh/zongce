@@ -27,13 +27,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 sealed class ExportState {
     object Idle : ExportState()
     data class Blocked(val issues: List<ExportCheck.Issue>) : ExportState()
 
-    /** 没有阻断项、但有提醒项：先让用户过目，确认后才打包。 */
+    /**
+     * 没有阻断项、但有提醒项：先让用户过目，确认后才打包。
+     * [items] 就是本次要打包的记录范围，随状态一起流转 —— 不再另存裸字段，
+     * 从根本上消除"处于 Confirm 态却拿不到范围 → 点继续导出没反应"的可能。
+     */
     data class Confirm(
+        val items: List<RecordWithPhotos>,
         val targetYear: String,
         val issues: List<ExportCheck.Issue>
     ) : ExportState()
@@ -66,6 +72,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 最近一次导出预览字段名（导出前过目一眼——文件名是公开可读的） */
     fun previewFileName(record: AwardRecord): String =
         FileNameRule.build(record.awardDate, record.awardName, record.grade) + ".jpg"
+
+    /**
+     * 取某张照片的原图文件，给 UI 显示缩略图用。
+     * UI 一律走这里 —— Composable 不要再自己构造 PhotoStore（那会绕过 ViewModel
+     * 并拿 Activity Context 去建数据层对象）。
+     */
+    fun photoFile(fileName: String): File = photoStore.photoFile(fileName)
 
     fun setPendingUris(uris: List<Uri>) {
         _pendingUris.value = uris
@@ -156,11 +169,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- 导出（英雄时刻） ----------
 
-    /** 提醒确认页上「继续导出」要用的负载：已确认的范围与学年。 */
-    private var pendingExport: Pair<List<RecordWithPhotos>, String>? = null
-
+    /**
+     * 回到初始态。Confirm 态的导出范围本来就在状态里，清状态即清范围，
+     * 不存在需要额外清掉的裸字段。
+     */
     fun resetExport() {
-        pendingExport = null
         _exportState.value = ExportState.Idle
     }
 
@@ -206,39 +219,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _updateState.value = UpdateUiState.Idle
     }
 
-    /** 按用户选定的评价学年体检并导出：阻断项先去修，提醒项先过目。 */
+    /**
+     * 按用户选定的评价学年体检并导出：阻断项先去修，提醒项先过目。
+     * 体检会对每张照片做一次 File.isFile（磁盘 stat），照片多时会卡住 UI 帧，
+     * 所以整段放进协程，磁盘部分切到 IO，回到主线程再更新状态。
+     */
     fun checkBeforeExport(
         list: List<RecordWithPhotos>,
         targetYear: String
     ) {
-        // 全量记录直接交给体检：学年过滤只在 ExportCheck 里做一次。
-        // 调用方再过滤一遍的话，"另有 N 条属于其他学年"这条提醒会被算成 0，永远不显示。
-        val issues = ExportCheck.run(list, targetYear, photoStore::exists)
-        val exportItems = ExportCheck.targetItems(list, targetYear)
-
-        when {
-            ExportCheck.blocks(issues) -> {
-                pendingExport = null
-                _exportState.value = ExportState.Blocked(issues)
+        viewModelScope.launch {
+            // 全量记录直接交给体检：学年过滤只在 ExportCheck 里做一次。
+            // 调用方再过滤一遍的话，"另有 N 条属于其他学年"这条提醒会被算成 0，永远不显示。
+            val issues = withContext(Dispatchers.IO) {
+                ExportCheck.run(list, targetYear, photoStore::exists)
             }
+            val exportItems = ExportCheck.targetItems(list, targetYear)
 
-            issues.isNotEmpty() -> {
-                pendingExport = exportItems to targetYear
-                _exportState.value = ExportState.Confirm(targetYear, issues)
-            }
+            when {
+                ExportCheck.blocks(issues) ->
+                    _exportState.value = ExportState.Blocked(issues)
 
-            else -> {
-                pendingExport = null
-                startExport(exportItems, targetYear)
+                issues.isNotEmpty() ->
+                    _exportState.value = ExportState.Confirm(exportItems, targetYear, issues)
+
+                else -> startExport(exportItems, targetYear)
             }
         }
     }
 
-    /** 用户在提醒确认页确认无误后继续导出。 */
+    /** 用户在提醒确认页确认无误后继续导出。范围随 Confirm 状态一起带出来，不会再为空。 */
     fun confirmExport() {
-        val pending = pendingExport ?: return
-        pendingExport = null
-        startExport(pending.first, pending.second)
+        val confirm = _exportState.value as? ExportState.Confirm ?: return
+        startExport(confirm.items, confirm.targetYear)
     }
 
     private fun startExport(list: List<RecordWithPhotos>, targetYear: String) {

@@ -68,6 +68,11 @@ android {
     }
 }
 
+// 把 Room 导出的 schema 落到 app/schemas/，纳入版本控制以便将来写迁移。
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.09.02"))
     implementation("androidx.compose.ui:ui")

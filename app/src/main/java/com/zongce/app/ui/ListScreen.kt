@@ -43,9 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.zongce.app.data.PhotoStore
 import com.zongce.app.data.RecordWithPhotos
 import com.zongce.app.data.WUYU_LIST
+import java.io.File
 
 @Composable
 fun ListScreen(
@@ -53,8 +53,6 @@ fun ListScreen(
     vm: AppViewModel,
     onEdit: (Long) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val photoStore = remember { PhotoStore(context) }
     var filter by remember { mutableStateOf("全部") }
     var onlyIncomplete by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<RecordWithPhotos?>(null) }
@@ -150,7 +148,7 @@ fun ListScreen(
                         Column {
                             RecordRow(
                                 item = item,
-                                photoStore = photoStore,
+                                photoFile = vm::photoFile,
                                 onEdit = { onEdit(item.record.id) },
                                 onDelete = { pendingDelete = item }
                             )
@@ -200,7 +198,7 @@ fun ListScreen(
 @Composable
 private fun RecordRow(
     item: RecordWithPhotos,
-    photoStore: PhotoStore,
+    photoFile: (String) -> File,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -210,7 +208,7 @@ private fun RecordRow(
     JicunRow(onClick = onEdit) {
         if (item.photos.isNotEmpty()) {
             PhotoThumb(
-                file = photoStore.photoFile(item.photos.first().fileName),
+                file = photoFile(item.photos.first().fileName),
                 size = 56
             )
         } else {

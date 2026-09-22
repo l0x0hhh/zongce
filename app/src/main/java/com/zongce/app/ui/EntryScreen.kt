@@ -60,7 +60,6 @@ import com.zongce.app.core.AcademicYear
 import com.zongce.app.data.AwardPhoto
 import com.zongce.app.data.AwardRecord
 import com.zongce.app.data.LEVEL_OPTIONS
-import com.zongce.app.data.PhotoStore
 import com.zongce.app.data.ROLE_OPTIONS
 import com.zongce.app.data.WUYU_LIST
 import java.time.Instant
@@ -74,8 +73,6 @@ fun EntryScreen(
     recordId: Long,
     onDone: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val photoStore = remember { PhotoStore(context) }
     val pendingUris by vm.pendingUris.collectAsState()
 
     var editingId by remember { mutableStateOf(recordId) }
@@ -172,7 +169,7 @@ fun EntryScreen(
                             existingPhotos.remove(photo)
                         }
                     ) {
-                        PhotoThumb(file = photoStore.photoFile(photo.fileName), size = 96)
+                        PhotoThumb(file = vm.photoFile(photo.fileName), size = 96)
                     }
                 }
                 items(extraUris, key = { it.toString() }) { uri ->

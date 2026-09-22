@@ -8,7 +8,8 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [AwardRecord::class, AwardPhoto::class],
     version = 1,
-    exportSchema = false
+    // 导出 schema 基线到 app/schemas/，为将来写迁移做准备。版本仍是 1，这里不写迁移。
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 

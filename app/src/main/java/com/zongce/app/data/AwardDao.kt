@@ -4,7 +4,6 @@ package com.zongce.app.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
@@ -24,7 +23,11 @@ interface AwardDao {
     @Query("SELECT COUNT(*) FROM award_records")
     suspend fun count(): Int
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // 用默认的 ABORT，绝不能改成 REPLACE：REPLACE 在 SQLite 里是「先删旧行、再插新行」，
+    // 而 award_photos 对 award_records 是 ON DELETE CASCADE —— 一旦主键撞上，
+    // 会静默级联删掉该记录的全部照片，换来的"覆盖"根本不是用户想要的。
+    // 新建记录 id=0 走自增主键，本就不会冲突，无需 REPLACE/IGNORE 的幂等语义。
+    @Insert
     suspend fun insertRecord(record: AwardRecord): Long
 
     @Update
