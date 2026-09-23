@@ -1,0 +1,58 @@
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant ES as ExportScreen
+    participant AL as ActivityResultLauncher
+    participant VM as AppViewModel
+    participant SYS as 系统分享面板
+    participant MA as MainActivity ON_RESUME
+    participant YD as YearDeleteDialog
+    participant RD as RecordDeletion
+    participant DAO as AwardDao
+    participant PS as PhotoStore
+
+    U->>ES: 点「检查并导出」→ 体检 → 打包
+    VM-->>ES: ExportState.Done(result, targetYear)
+    U->>ES: 点「分享材料包」
+    ES->>VM: markShared(targetYear)
+    note over VM: pendingDeleteYear=targetYear; shareLaunched=true; promptConsumed=false（仅内存）
+    ES->>AL: launch(createChooser(ACTION_SEND))
+    AL->>SYS: 系统面板到前台
+    Note over VM: Activity 进入 PAUSE
+
+    SYS-->>AL: 回到暨存（RESULT_OK / CANCELED 都算）
+    AL->>VM: onReturnedFromShare()
+    SYS-->>MA: 部分 ROM 不回填 result，走 ON_RESUME 兜底
+    MA->>VM: onReturnedFromShare()
+    note over VM: 同一个幂等消费函数：pending 非空 且 shareLaunched 且 未弹过 → 才弹
+
+    VM->>DAO: allWithPhotos().first()（IO）
+    VM->>VM: AcademicYear.inYear(items, year) 实时算 n 条 / m 张
+    VM-->>YD: yearDeletePrompt = YearDeletePrompt(year, n, m)
+    YD->>U: 「这一学年的 N 条记录和它们的 M 张照片会一起删除，无法恢复。材料包已导出。」
+
+    alt 点「保留」
+        U->>YD: 保留
+        YD->>VM: dismissYearDelete()
+        note over VM: 清 pending / shareLaunched；本次导出不再弹
+    else 点「删除」
+        U->>YD: 删除
+        YD->>VM: confirmYearDelete()
+        VM->>VM: deleteRunning=true；deleting=true（按钮 loading）
+        VM->>DAO: allWithPhotos().first()（IO，重新算作用域）
+        VM->>VM: AcademicYear.inYear → records
+        VM->>RD: delete(records)
+        RD->>DAO: deleteRecordsAndPhotos(ids) @Transaction
+        DAO-->>RD: 提交成功
+        loop 每个涉及的 fileName（去重集合）
+            RD->>DAO: photoReferenceCount(name)
+            DAO-->>RD: 0 → 可删；>0 → 保留
+        end
+        RD->>PS: deleteAll(0 引用的名字集合)
+        PS-->>RD: 失败名列表（Log.w，不影响整体成功）
+        RD-->>VM: Outcome
+        VM->>VM: deleting=false；deleteRunning=false；清 pending
+        VM-->>MA: deleteMessages「已删除 N 条记录 · M 张照片」
+        MA->>U: Toast
+        Note over VM: 学年 chip 随 Flow 重算消失，AchievementScreen 的 LaunchedEffect(years) 负责回落
+    end

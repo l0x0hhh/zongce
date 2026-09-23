@@ -6,15 +6,47 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.3.6` |
-| 版本状态 | 待打 tag `v1.3.6` 走 CI 发布。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
+| 版本号 | `1.4.0` |
+| 版本状态 | 开发中，未打 tag。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
 | 最近更新 | 2026-09-23 |
-| Android 应用版本 | `versionName 1.3.6`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本机无口令构建不了可安装的验证包（历史做法是手动传 `-PreleaseVersionCode` 且须高于线上，例如 `1000009` > 线上 v1.3.2 的 `1000008`） |
+| Android 应用版本 | `versionName 1.4.0`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本机无口令构建不了可安装的验证包（历史做法是手动传 `-PreleaseVersionCode` 且须高于线上，例如 `1000013` > 线上 v1.3.6 的 `1000012`） |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 发布前 5 个文件待提交（成果组件学年同步修复 4 个 + 版本号），已核对与 `origin/main`（`f71db8e`）同步、无并发会话推进 HEAD |
+| 工作区状态 | v1.4.0 全部改动**尚未提交**（成果概览组件移除 7 个文件删除 + 8 个文件修改 + 4 个新文件 + 3 份文档）；HEAD 仍为 `6057c75`（v1.3.6 发布记录） |
 
-## 本版本更新（v1.3.6）
+## 本版本更新（v1.4.0）
+
+> 对应 PRD：`docs/prd/prd-删除与组件精简-v1.4.0-2026-09-23.md`；实现方案与任务分解：`docs/design/system_design.md`。
+
+### 一、删除能力：多选删除 + 导出后清学年
+
+- **删除管线收口到 `data/RecordDeletion.kt`（纯 Kotlin、零 Android 依赖）**，单条 / 多选 / 整个学年三条路径都只经过它。顺序铁律写死在它内部：**① 先删库（一个 Room 事务，先 `award_photos` 后 `award_records`，反序撞外键 CASCADE+ABORT）→ ② 事务提交成功后按"删除后的库态"重新查 `photoReferenceCount` → ③ 只有计数 == 0 才删文件**。
+  - 旧实现是**「先删文件、后删库」**：DB 一旦失败就变成"记录还在、照片没了"——**永久缺图且不可逆**。反转后最坏结果只是残留几个孤儿文件（无害）。失败方向必须是"残留孤儿"，绝不能是"丢照片"。
+  - 引用计数必须用删除后的库态：A（2025-2026）与 B（2024-2025）共用同一张 `ab12.jpg` 时，删掉 A 所属范围后计数为 1，**用删除前的快照或"先删 photo 行再统计"都会误删 B 的照片**。
+  - 抽成纯类是被测出来的：本项目 JVM 单测是纯 JUnit4、没有 Robolectric，`AndroidViewModel` / Room 在 JVM 上跑不起来——只有把铁律抽成可注入端口的纯类，这条不可逆风险才能真正被单测覆盖。
+- **`AwardDao` 新增 `@Transaction deleteRecordsAndPhotos()`**（`deletePhotosOfRecords` + `deleteRecordsByIds`，`chunked(500)` 规避 SQLite 999 变量上限）。KSP 产物已确认整个 chunked 循环被包进**同一个** `withTransaction`，不是每块一个事务。
+- **成果页多选删除**：标题行「选择」进入选择态，行首出 `Checkbox`、收起 `ChevronRight`，底部 `Box` 覆盖层放操作条（全选 / 删除 N）。选择态与选择集**都在 ViewModel**（`RecordWithPhotos` 不可序列化，进 `SavedStateHandle` 还要转换）；返回键 `BackHandler` 优先退出选择态；切学年清空选择集。确认弹窗必须报出「N 条记录 + M 张照片」。
+- **导出后删除闭环**：点「分享材料包」→ `markShared(year)` 只记内存 → `ActivityResultLauncher` 起 chooser → 回到 App 弹「删除这一学年？」。launcher 回调与 `ON_RESUME` 兜底**共用同一个幂等消费函数**（部分 ROM 的 chooser 不回填 ActivityResult，只用 launcher 就永远不弹）。`pendingDeleteYear` / `shareLaunched` / `promptConsumed` **只存内存**，进程被杀则冷启动不弹不删。
+- **学年判定保持两份、各管一件事**：严格口径（展示 / 删除）= `AcademicYear.inYear()`；导出口径（打包 / 体检）= `ExportCheck.targetItems()`。删除口径**更严一格**：日期空 / 非法的记录导出会收进来（交给体检阻断），删除绝不收——删除不可逆，只认明确归属。
+- **编辑记录时移除照片的路径修过一次顺序竞态**（QA 二轮独立验证挖出的真缺陷，未发布即自纠）：初版把「按 photoId 反查 fileName」留在了 `dao.deletePhotos()` 之后，而它读的是 `items.value`（`stateIn` 缓存）—— Room 的失效通知一到名字就取不到，被移除的照片**永远不从磁盘删、孤儿文件永久泄漏**，而且是靠竞态侥幸工作。修法是新增 `AwardDao.photoFileName()` 直接问库、删掉读缓存的 `currentPhotoName()`。边界一句话：**fileName 属于「DELETE 之前的事实」，`photoReferenceCount` 属于「DELETE 之后的状态」**，两侧不能混。
+- 验证：`:app:testDebugUnitTest --rerun` **97 个用例全绿**（`failures=0 errors=0 skipped=0`）。新增 `RecordDeletionTest` 8 条（含"跨学年共用照片的文件不能被删"、DB 失败时文件与计数查询一次都不触发、顺序铁律 rows→count→files）、`AcademicYearYearScopeTest` 6 条，QA 补 `YearDeletePromptGateTest` 15 条 / `RecordDeletionYearScopeTest` 5 条 / `AchievementYearStoreContractTest` 3 条。**删除与跨进程/生命周期行为本地单测覆盖不到，必须真机验证**：① 跨学年共用照片时只删记录不删文件；② 连点 3 次「删除」只放行 1 次；③ 真分享 / 取消分享 / 按 Home 再回三种方式各弹一次且仅一次；④ 分享面板里划掉 App 冷启动不弹不删；⑤ 点「保留」后再分享一次不再追问；⑥ 删除后 `cacheDir/exports/*.zip` 仍在；⑦ **编辑已有记录 → 删掉其中一张照片 → 保存 → `adb shell run-as com.zongce.app ls files/photos` 确认该文件已消失**（BUG-1 的修复路径，必须重跑）。
+
+### 二、桌面组件精简：移除「成果概览」
+
+- **「成果概览」组件（RemoteViews 版）整体移除**：`widget/AchievementListWidget.kt`、`res/xml/jicun_achievement_widget_info.xml`、`res/layout/widget_achievement_list.xml`、`res/layout/widget_preview_achievement.xml`、`res/drawable/widget_achievement_bg.xml`、`res/drawable-nodpi/widget_preview_achievement_img.png`、Manifest 的 receiver 与两条 string，**共 7 项删除**。配套的 `refreshWidget()` 及其两处调用一并摘掉。
+- **共用资源一律保留**：`widget_logo.png`、`widget_preview_bg.xml`、`widget_preview_tile_*`、快速录入组件全套（`JicunWidget.kt` / `JicunWidgetReceiver.kt` / `jicun_widget_info.xml` / `widget_preview_entry.*`）——删了会连带弄坏仍在用的快速录入组件。`tmp/gen_widget_previews.py` 的 achievement 分支同步清掉。
+- **学年偏好下沉为 `data/AchievementYearStore.kt`**：组件没了，但"成果页记住上次选的学年"要留下。SharedPreferences 名 `jicun_achievement_widget` 与键 `selected_year` **一字未改**（老用户升级不丢学年），`commit()` 同步落盘保留；`shift()`（组件箭头专用）随组件废弃不迁移。**学年写入仍走单消费者 Channel 串行队列**（v1.3.6 修过的并发坑：连点 chip 时 `Dispatchers.IO` 是多线程池，裸 launch 会让"最后点的学年"不一定最后落盘）。
+- **`WidgetActions.OPEN_ACHIEVEMENT` 已无发送方**，但按 PRD §7.3 保留常量与 `MainActivity` 路由（改它要动 `isWidgetAction` 协议，收益不抵风险），已在 `CODE_STRUCTURE.md` 注明。ADR-0002 标为 Deprecated（历史正文保留）。
+
+### 三、已知待办（本期刻意不处理）
+
+| # | 事项 | 为什么不本期做 |
+| --- | --- | --- |
+| 1 | `AcademicYear.targetLabel(dateText: String = today())` 带了由当前日期推导的默认值，与 `AGENTS.md` 的禁令冲突；`AchievementYearStore.current()` 的回落依赖它 | 改它要动 `yearsOf()`「当前学年永远在列」的兜底语义，牵扯成果页 / 导出页 / 组件三处；与 v1.4.0 无关，单独开一轮 |
+| 2 | `LocalLifecycleOwner`（`androidx.compose.ui.platform`）已 deprecated，替代实现在 `lifecycle-runtime-compose` | 引它等于新增依赖，而 `docs/design/system_design.md` §6 明确「不新增任何第三方依赖」；目前只是编译告警，行为正常 |
+| 3 | 删除链路与组件移除的真机验证 | 本机无签名口令，构建不了可安装验证包；发布后按上文「必须真机验证」六条清单回归 |
+
+## v1.3.6 更新（历史）
 
 ### 成果小组件：修「在 App 内选完学年，回桌面组件不刷新」
 

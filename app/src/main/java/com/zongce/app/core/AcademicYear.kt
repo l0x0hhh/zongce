@@ -35,6 +35,18 @@ object AcademicYear {
         runCatching { labelForDate(dateText) == label }.getOrDefault(false)
 
     /**
+     * 严格学年归属过滤（成果页展示 / 多选删除范围 / 学年删除范围 三处共用）。
+     *
+     * 与导出口径 ExportCheck.targetItems 刻意不合并：
+     * 后者会把"日期空 / 日期非法"的记录也收进范围（交给体检阻断），
+     * 删除不能跟着收 —— 删除不可逆，只认明确归属该学年的记录。
+     *
+     * @param dateOf 取出每条数据的获奖日期，泛型化是为了让学年判定不必依赖 Room 实体
+     */
+    fun <T> inYear(items: List<T>, year: String, dateOf: (T) -> String): List<T> =
+        items.filter { belongsTo(dateOf(it), year) }
+
+    /**
      * 一组获奖日期里出现过的全部学年，降序。
      * 当前目标学年始终在列 —— 否则新学期刚开始、一条记录都没有时，
      * 学年选择器会空掉，用户看不到"当前学年"这个锚点。

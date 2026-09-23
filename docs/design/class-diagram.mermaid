@@ -1,0 +1,101 @@
+classDiagram
+    class AppViewModel {
+        -dao: AwardDao
+        -photoStore: PhotoStore
+        -deletion: RecordDeletion
+        +items: StateFlow~List~RecordWithPhotos~~
+        +exportState: StateFlow~ExportState~
+        +selectionMode: StateFlow~Boolean~
+        +selectedIds: StateFlow~Set~Long~~
+        +deleting: StateFlow~Boolean~
+        +deleteMessages: SharedFlow~String~
+        +yearDeletePrompt: StateFlow~YearDeletePrompt?~
+        +enterSelectionMode()
+        +exitSelectionMode()
+        +toggleSelected(id: Long)
+        +selectAll(ids: List~Long~)
+        +deleteRecord(item: RecordWithPhotos)
+        +deleteSelected()
+        +deleteYear(year: String)
+        +markShared(year: String)
+        +onReturnedFromShare()
+        +confirmYearDelete()
+        +dismissYearDelete()
+        +saveAchievementYear(year: String)
+        +initialAchievementYear(): String
+    }
+
+    class RecordDeletion {
+        -deleteRows: suspend (List~Long~) to Unit
+        -referenceCount: suspend (String) to Int
+        -deleteFiles: (Set~String~) to List~String~
+        +delete(records: List~RecordWithPhotos~) Outcome
+    }
+
+    class Outcome {
+        +recordCount: Int
+        +photoRowCount: Int
+        +deletedFileCount: Int
+        +failedFiles: List~String~
+    }
+
+    class YearDeletePrompt {
+        +year: String
+        +recordCount: Int
+        +photoCount: Int
+    }
+
+    class AwardDao {
+        +deleteRecordsAndPhotos(recordIds: List~Long~)
+        +deletePhotosOfRecords(recordIds: List~Long~)
+        +deleteRecordsByIds(recordIds: List~Long~)
+        +photoReferenceCount(fileName: String) Int
+        +allWithPhotos() Flow
+    }
+
+    class PhotoStore {
+        +photoFile(fileName: String) File
+        +exists(fileName: String) Boolean
+        +delete(fileName: String) Boolean
+        +deleteAll(fileNames: Iterable~String~) List~String~
+    }
+
+    class AchievementYearStore {
+        +current(context: Context, years: List~String~) String
+        +set(context: Context, year: String)
+    }
+
+    class AcademicYear {
+        +belongsTo(dateText: String, label: String) Boolean
+        +inYear(items: List~T~, year: String, dateOf: Function) List~T~
+        +yearsOf(dateTexts: List~String~) List~String~
+    }
+
+    class AchievementScreen {
+        +items: List~RecordWithPhotos~
+        +vm: AppViewModel
+    }
+
+    class ExportScreen {
+        +shareLauncher: ActivityResultLauncher
+    }
+
+    class MainActivity {
+        +onResumeHook()
+        +YearDeleteDialog()
+        +ToastHost()
+    }
+
+    AppViewModel --> RecordDeletion : 唯一删除入口
+    AppViewModel --> AwardDao
+    AppViewModel --> PhotoStore
+    AppViewModel --> AchievementYearStore
+    RecordDeletion ..> Outcome : 产出
+    RecordDeletion ..> AwardDao : 端口 deleteRows / referenceCount
+    RecordDeletion ..> PhotoStore : 端口 deleteFiles
+    AppViewModel ..> YearDeletePrompt : 产出
+    AchievementScreen --> AppViewModel : 多选态 / 删除
+    ExportScreen --> AppViewModel : markShared / onReturnedFromShare
+    MainActivity --> AppViewModel : ON_RESUME / 弹窗 / Toast
+    AchievementScreen ..> AcademicYear : inYear 学年口径
+    AppViewModel ..> AcademicYear : inYear 学年口径

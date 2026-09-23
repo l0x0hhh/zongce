@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,12 +18,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -40,6 +46,7 @@ import com.zongce.app.ui.JicunGlassNavigationBar
 import com.zongce.app.ui.JicunTheme
 import com.zongce.app.ui.ListScreen
 import com.zongce.app.ui.UpdateDialog
+import com.zongce.app.ui.YearDeleteDialog
 import com.zongce.app.ui.defaultAppTabs
 import com.zongce.app.update.UpdateChecker
 
@@ -118,6 +125,30 @@ private fun App(
     // 启动即静默检查一次更新（每天最多一次；无新版或失败都不打扰用户）。
     // 用 Unit 作 key，保证整个 App 组合期间只触发一次，不会随重组反复发请求。
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.autoCheckForUpdate() }
+
+    // 删除结果的 Toast。用 Toast 而不是 SnackBar：本页的 Scaffold 没有 snackbarHost，
+    // 为一条提示去加一个要和 NavHost padding、玻璃导航栏叠放的 host 不划算，
+    // 而删除反馈本就是"不阻塞操作"的告知。
+    LaunchedEffect(Unit) {
+        vm.deleteMessages.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // 「从分享面板回到 App」的兜底路径：部分 ROM 的 chooser 不回填 ActivityResult，
+    // 只用 launcher 就永远等不到回调。与 launcher 回调走同一个幂等消费函数，
+    // 由 VM 内部的 promptConsumed 保证只弹一次 —— 两条路径绝不能各弹一次。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.onReturnedFromShare()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val yearDeletePrompt by vm.yearDeletePrompt.collectAsState()
+    val deleting by vm.deleting.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -217,5 +248,14 @@ private fun App(
         },
         onDismiss = vm::resetUpdate,
         onRetry = vm::checkForUpdate
+    )
+
+    // 学年删除询问与更新弹窗同级：从分享面板回来时用户可能停在任何一个 tab，
+    // 挂在这一层才能确保无论落在哪都能看到。
+    YearDeleteDialog(
+        prompt = yearDeletePrompt,
+        deleting = deleting,
+        onConfirm = vm::confirmYearDelete,
+        onDismiss = vm::dismissYearDelete
     )
 }

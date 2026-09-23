@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.gradleProperty("releaseVersionCode").orElse("2").get().toInt()
-        versionName = providers.gradleProperty("versionName").orElse("1.3.6").get()
+        versionName = providers.gradleProperty("versionName").orElse("1.4.0").get()
     }
 
     // 本地没有签名参数时仍可构建 release；CI 通过 GitHub Secrets 注入正式签名。

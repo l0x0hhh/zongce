@@ -2,6 +2,8 @@
 package com.zongce.app.ui
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,6 +52,13 @@ import com.zongce.app.export.ExportCheck
 fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
     val context = LocalContext.current
     val state by vm.exportState.collectAsState()
+
+    // 分享面板要能"回来时通知 App"：用户在面板里发完（或取消）回到暨存，就是询问
+    // 「要不要删掉这一学年」的时机。裸 startActivity 拿不到这个时刻，必须用 launcher。
+    // RESULT_OK / RESULT_CANCELED 一律当成"回来了" —— 取消分享也算回来了，照样问。
+    val shareLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { vm.onReturnedFromShare() }
     // 学年列表只由 AcademicYear.yearsOf 生成，不再在 UI 里复刻一遍（保证与组件/成果页同源）。
     val availableYears = remember(items) {
         AcademicYear.yearsOf(items.map { it.record.awardDate })
@@ -275,7 +284,11 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                             putExtra(Intent.EXTRA_STREAM, uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        context.startActivity(Intent.createChooser(intent, "发送材料包到…"))
+                        // targetYear 从状态里取，不用 UI 局部的 targetYear：
+                        // 那一个会被 LaunchedEffect(availableYears) 的回落改掉，
+                        // 于是弹窗问的学年和实际导出的学年不是同一个。
+                        vm.markShared(current.targetYear)
+                        shareLauncher.launch(Intent.createChooser(intent, "发送材料包到…"))
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {

@@ -1,0 +1,47 @@
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant AS as AchievementScreen
+    participant VM as AppViewModel
+    participant RD as RecordDeletion
+    participant DAO as AwardDao
+    participant PS as PhotoStore
+
+    U->>AS: 点标题行「选择」
+    AS->>VM: enterSelectionMode()
+    VM-->>AS: selectionMode=true, selectedIds=空
+    AS->>U: 行首出现 Checkbox；「选择」变「已选 0 条 / 取消」；底部浮出操作条
+
+    U->>AS: 点行 / 点 Checkbox
+    AS->>VM: toggleSelected(id)
+    U->>AS: 点「全选」
+    AS->>VM: selectAll(当前学年可见 ids)
+    U->>AS: 系统返回键
+    AS->>VM: BackHandler → exitSelectionMode()（不退出页面）
+
+    U->>AS: 点「删除（N）」
+    AS->>U: AlertDialog「删除 N 条记录？已选 N 条记录和它们的 M 张照片会一起删除，无法恢复」
+    alt 取消
+        U->>AS: 取消（关闭弹窗，选择集保留）
+    else 确认
+        U->>AS: 删除
+        AS->>VM: deleteSelected()
+        note over VM: deleteRunning 已为 true 则直接 return（P1-3 幂等）
+        VM->>VM: deleting=true → 确认按钮转圈并禁用
+        VM->>RD: delete(选中的 records)（IO）
+        RD->>DAO: deleteRecordsAndPhotos(ids) @Transaction
+        DAO-->>RD: OK
+        loop 去重后的 fileName
+            RD->>DAO: photoReferenceCount(name)（删除后的库态）
+            DAO-->>RD: 0 → 删；>0 → 保留（跨学年引用）
+        end
+        RD->>PS: deleteAll(0 引用集合)
+        RD-->>VM: Outcome(recordCount, photoRowCount, deletedFileCount, failedFiles)
+        VM->>VM: exitSelectionMode()（清选择集 + 退出选择态）
+        VM->>VM: deleting=false / deleteRunning=false
+        VM-->>AS: deleteMessages → Toast「已删除 N 条记录 · M 张照片」
+    end
+
+    Note over AS: 删除整个学年（导出后路径）走同一个 delete()：VM.deleteYear(year) 先实时算 inYear 范围，再调 RD.delete(records)
+
+    Note over RD: DB 失败分支（P1-2）：deleteRows 抛异常 → delete() 直接抛出 → deleteFiles 一次都不执行 → 文件全部幸存

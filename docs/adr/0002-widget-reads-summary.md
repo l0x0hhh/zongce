@@ -2,7 +2,17 @@
 
 ## Status
 
-Accepted
+> **Deprecated（2026-09-23）**：本 ADR 描述的「成果概览」小组件已在 **v1.4.0 整体移除**。
+>
+> 移除范围包括 `widget/AchievementListWidget.kt`、`jicun_achievement_widget_info.xml`、`widget_achievement_list.xml`、`widget_preview_achievement.*`、`widget_achievement_bg.xml`、Manifest 里的 receiver 与两条 string；学年偏好降级为成果页自己的 UI 偏好 `data/AchievementYearStore.kt`（键名 `jicun_achievement_widget` / `selected_year` 保持不变，老用户升级不丢学年）。
+>
+> 决策依据：`docs/prd/prd-删除与组件精简-v1.4.0-2026-09-23.md`（P0-6 要求 100% 移除）；实现方案见 `docs/design/system_design.md`（T01）。
+>
+> 因此本 ADR 中「以后新增任何写路径都要记得调 `refreshWidget()`」这条隐性约束**已随组件一并消失**；「快速录入」组件（`JicunWidget`）仍受 ADR-0001 约束，不碰数据库。
+>
+> 以下为原始决策正文，保留备查，不再指导后续开发。
+
+Accepted（历史状态，见上方 Deprecated 说明）
 
 ## Context
 

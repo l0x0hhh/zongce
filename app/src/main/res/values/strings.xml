@@ -9,8 +9,4 @@
     <string name="widget_description">把拍证书、选照片的入口放在桌面，点一下直接进录入页</string>
     <string name="widget_capture">拍照</string>
     <string name="widget_pick_photos">相册</string>
-
-    <!-- 桌面小组件之二（成果概览）：只读展示本学年成果，理由见 docs/adr/0002。 -->
-    <string name="achievement_widget_label">暨存 · 我的成果</string>
-    <string name="achievement_widget_description">在桌面看本学年的成果概览，点一下进成果页</string>
 </resources>
