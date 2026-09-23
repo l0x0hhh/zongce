@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.zongce.app.core.AcademicYear
 import com.zongce.app.core.FileNameRule
 import com.zongce.app.data.AppDatabase
 import com.zongce.app.data.AwardPhoto
@@ -20,11 +21,14 @@ import com.zongce.app.update.UpdateChecker
 import com.zongce.app.update.UpdateInfo
 import com.zongce.app.update.UpdateThrottle
 import com.zongce.app.widget.AchievementListWidget
+import com.zongce.app.widget.WidgetYearStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -181,6 +185,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { AchievementListWidget.pushUpdate(getApplication()) }
         }
+    }
+
+    /**
+     * 学年同步请求队列。
+     *
+     * 为什么需要它，而不是每次点击直接起一个 IO 协程：Dispatchers.IO 是多线程池，
+     * 连续点两个学年 chip 时，两次「写盘 + 推送组件」的**执行顺序没有保证**。
+     * 坏交错下后点的先执行、先点的后执行，最终落盘的反而是先点的那个 ——
+     * 表现为「我明明选的是最后点的学年，组件却停在之前那个」，正是本次要修的
+     * 同步失效表征（低概率，但混淆度极高，用户只会觉得"又没同步"）。
+     *
+     * 单消费者队列把这两步串行化，且严格按入队顺序（= 点击顺序）执行，
+     * 保证最后一次点击的最后生效。UNLIMITED 容量避免连点时溢出丢事件。
+     */
+    private val widgetYearRequests = Channel<String>(Channel.UNLIMITED)
+
+    init {
+        // 队列的唯一消费者：挂在 viewModelScope 下，随 ViewModel 销毁而取消，
+        // 不需要另外管理生命周期。receive() 在队列空时挂起，取消时抛
+        // CancellationException 正常退出。
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val year = widgetYearRequests.receive()
+                WidgetYearStore.set(getApplication(), year)
+                runCatching { AchievementListWidget.pushUpdate(getApplication()) }
+            }
+        }
+    }
+
+    /**
+     * App 内成果页选中了学年：写入组件共用的学年存储，并立刻推送所有成果组件重渲染。
+     * 此前 App 内的选中只活在 Compose 本地状态里，组件读的存储永远没人写 ——
+     * 这就是"选完学年回桌面，组件还是旧学年"的根因。
+     *
+     * 只负责入队，实际写盘与推送由上面的消费者在 IO 线程串行完成。
+     * 推送失败只吞掉，与 refreshWidget() 同理：组件刷不出来，不该影响 App 内的筛选本身。
+     */
+    fun syncWidgetYear(year: String) {
+        widgetYearRequests.trySend(year)
+    }
+
+    /**
+     * 成果页的初始学年：与组件渲染同口径 —— 查一次库算学年列表，再读存储做回落。
+     * 不能拿 UI 已有的 items 来算 years（StateFlow 首帧是空列表，
+     * yearsOf 又永远包含当前学年），否则存储里的学年会被误判成"已不存在"而错误回落。
+     */
+    suspend fun initialWidgetYear(): String = withContext(Dispatchers.IO) {
+        val items = dao.allWithPhotos().first()
+        val years = AcademicYear.yearsOf(items.map { it.record.awardDate })
+        WidgetYearStore.current(getApplication(), years)
     }
 
     private suspend fun currentPhotoName(photoId: Long): String? {

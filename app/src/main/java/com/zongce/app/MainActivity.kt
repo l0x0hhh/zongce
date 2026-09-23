@@ -157,6 +157,7 @@ private fun App(
             ) {
                 AchievementScreen(
                     items = items,
+                    vm = vm,
                     onOpenRecord = { id -> nav.navigate("entry/$id") },
                     onAddRecord = {
                         vm.clearPending()

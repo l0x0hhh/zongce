@@ -33,6 +33,16 @@ object WidgetYearStore {
     }
 
     /**
+     * 直接写入指定学年。App 内成果页的学年筛选与组件箭头共用这一份存储 ——
+     * 此前只有 shift() 会写，App 内选完学年组件永远读不到，两边各显各的学年。
+     * 与 shift() 同理用 commit() 同步落盘：调用方写完立刻推送组件重渲染，
+     * 必须读到刚写入的值，apply() 的异步写盘做不到这一点。
+     */
+    fun set(context: Context, year: String) {
+        prefs(context).edit().putString(KEY, year).commit()
+    }
+
+    /**
      * 沿学年列表移动一位（direction 为 -1 / +1）。
      * 每次重新查库算学年列表 —— 用户可能删过记录，列表以当前数据为准。
      * 越界时原地不动（coerceIn 把越界值夹回来，等于没动）。

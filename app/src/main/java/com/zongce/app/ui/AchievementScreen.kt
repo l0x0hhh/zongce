@@ -47,19 +47,33 @@ import com.zongce.app.data.RecordWithPhotos
 @Composable
 fun AchievementScreen(
     items: List<RecordWithPhotos>,
+    vm: AppViewModel,
     onOpenRecord: (Long) -> Unit,
     onAddRecord: () -> Unit
 ) {
     val years = remember(items) { AcademicYear.yearsOf(items.map { it.record.awardDate }) }
-    var selectedYear by remember { mutableStateOf(AcademicYear.LABEL) }
+    // null 表示初始学年还没从组件存储读回，展示时临时回落到当前目标学年。
+    var selectedYear by remember { mutableStateOf<String?>(null) }
 
-    // 记录变动后，选中的学年可能已经不在列表里（比如删掉了唯一一条跨学年记录）。
-    LaunchedEffect(years) {
-        if (selectedYear !in years) selectedYear = years.firstOrNull() ?: AcademicYear.LABEL
+    // 初值以组件存储为准 —— 成果页刚打开时选中的就是桌面组件正在显示的学年，
+    // 否则用户没点过 chip 之前，两边各显各的，看起来还是"不同步"。
+    LaunchedEffect(Unit) {
+        val initial = vm.initialWidgetYear()
+        // 用户可能在读回之前就点了 chip，那时本地状态已经是真实选择，不能被覆盖
+        if (selectedYear == null) selectedYear = initial
     }
 
-    val ofYear = remember(items, selectedYear) {
-        items.filter { AcademicYear.belongsTo(it.record.awardDate, selectedYear) }
+    // 记录变动后，选中的学年可能已经不在列表里（比如删掉了唯一一条跨学年记录）。
+    // 读回初值之前不做回落：Room 首帧是空列表，会把存储里的学年误判成"已不存在"。
+    LaunchedEffect(years) {
+        val current = selectedYear ?: return@LaunchedEffect
+        if (current !in years) selectedYear = years.firstOrNull() ?: AcademicYear.LABEL
+    }
+
+    val year = selectedYear ?: AcademicYear.LABEL
+
+    val ofYear = remember(items, year) {
+        items.filter { AcademicYear.belongsTo(it.record.awardDate, year) }
             .sortedByDescending { it.record.awardDate }
     }
 
@@ -97,16 +111,22 @@ fun AchievementScreen(
                     JicunChip(
                         text = year,
                         selected = year == selectedYear,
-                        onClick = { selectedYear = year }
+                        onClick = {
+                            selectedYear = year
+                            // 写入组件共用的学年存储并立刻推送重渲染 ——
+                            // 这样回到桌面，组件显示的就是刚选的这个学年。
+                            // 只在点击时触发一次，不在重组路径上。
+                            vm.syncWidgetYear(year)
+                        }
                     )
                 }
             }
         }
 
-        item { YearSummary(records = ofYear, year = selectedYear) }
+        item { YearSummary(records = ofYear, year = year) }
 
         if (ofYear.isEmpty()) {
-            item { EmptyYear(year = selectedYear, onAddRecord = onAddRecord) }
+            item { EmptyYear(year = year, onAddRecord = onAddRecord) }
         } else {
             item { RecordGroup(records = ofYear, onOpen = onOpenRecord) }
         }

@@ -6,15 +6,33 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.3.5` |
-| 版本状态 | 待打 tag `v1.3.5` 走 CI 发布。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
+| 版本号 | `1.3.6` |
+| 版本状态 | 待打 tag `v1.3.6` 走 CI 发布。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
 | 最近更新 | 2026-09-23 |
-| Android 应用版本 | `versionName 1.3.5`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本机无口令构建不了可安装的验证包（历史做法是手动传 `-PreleaseVersionCode` 且须高于线上，例如 `1000009` > 线上 v1.3.2 的 `1000008`） |
+| Android 应用版本 | `versionName 1.3.6`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本机无口令构建不了可安装的验证包（历史做法是手动传 `-PreleaseVersionCode` 且须高于线上，例如 `1000009` > 线上 v1.3.2 的 `1000008`） |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 发布前 12 个文件待提交（启动自动检查更新 5 个 + 成果小组件返工 7 个），已核对与 `origin/main`（`daaa14b`）同步、无并发会话推进 HEAD |
+| 工作区状态 | 发布前 5 个文件待提交（成果组件学年同步修复 4 个 + 版本号），已核对与 `origin/main`（`f71db8e`）同步、无并发会话推进 HEAD |
 
-## 本版本更新（v1.3.5）
+## 本版本更新（v1.3.6）
+
+### 成果小组件：修「在 App 内选完学年，回桌面组件不刷新」
+
+- **根因不是刷新时机 / 生命周期，是状态源分裂**。
+  - `AchievementScreen` 的 `selectedYear` 是 `remember { mutableStateOf(...) }` 的 Compose 本地状态，点 chip 只改内存；
+  - 组件读的是 `WidgetYearStore`（SharedPreferences）；
+  - 全仓 grep 证实 `WidgetYearStore` **只有组件自己读写**（渲染时 `current()` 读、桌面箭头 `shift()` 写），**App 内代码零写入点**。
+  - 于是「在桌面点箭头」一直正常，而「在 App 内选学年」这条路径从来没接上 —— 渲染层做得再正确，读到的仍是旧学年。
+- **为什么 v1.3.3 / v1.3.4 / v1.3.5 三轮修复全部无效**（可复用的判断规则）：v1.3.3 修 `apply()→commit()`（写盘时序）、v1.3.4 修 `setRemoteAdapter` Intent 唯一化（RemoteViews 缓存）、v1.3.5 整包返工渲染方案 —— **三次都在渲染层打转，断点在状态层**。一个 bug 跨多版、换了实现依旧存在时，几乎可以断定它不在被反复改动的那一层，应先查「数据来源 / 状态归属 / 谁读谁写」。
+- **修复四处（缺一不可）**：
+  1. `widget/WidgetYearStore.kt` 新增 `set(context, year)`：与 `shift()` 一样用 **`commit()` 同步落盘** —— 调用方写完立刻要推送组件重渲染，必须当场读到刚写的值，`apply()` 的异步写盘做不到。
+  2. `ui/AchievementScreen.kt` chip `onClick` 调 `vm.syncWidgetYear(year)`：写盘 + 主动推送所有成果组件重渲染。放在点击回调里、不在重组路径上，一次点击只触发一次。
+  3. `ui/AppViewModel.kt` 新增 `initialWidgetYear()`：成果页初值以组件存储为准（打开就选中桌面组件正在显示的学年），且**自己查一次库**算学年列表再回落 —— 不能复用 UI 的 `items`，Room `StateFlow` 首帧是空列表、`yearsOf()` 又永远包含当前学年，会把存储里的学年误判成「已不存在」而错误回落。`selectedYear` 改 `String?`（null = 初值未读回），`LaunchedEffect(Unit)` 仅在为 null 时应用初值（防用户先点 chip 被覆盖），`LaunchedEffect(years)` 的回落改为 null 时直接 return。
+  4. **串行化写入队列**（QA 二轮独立验证挖出的并发缺口）：`syncWidgetYear` 原为「每次点击起一个 `Dispatchers.IO` 协程」，而 `Dispatchers.IO` 是多线程池 —— **连点两个 chip 时两次「写盘 + 推送」执行顺序无保证**，坏交错下最终落盘的是先点的学年，表现为「明明选的是最后点的，组件却停在之前那个」（低概率、高混淆）。改为**单消费者 `Channel(UNLIMITED)` + 一个常驻 IO 协程**：严格按入队顺序（= 点击顺序）执行，最后一次点击最后生效；容量 UNLIMITED 防连点溢出丢事件；挂在 `viewModelScope` 下随 ViewModel 销毁自动取消。未用 `Dispatchers.IO.limitedParallelism(1)`（项目 coroutines 缓存最高 1.7.3，该 API 当时仍是实验性，会留下多余 `@OptIn` 警告）。
+- 验证：`:app:testDebugUnitTest --rerun` **60 个用例全绿**（`failures=0 errors=0`），但本修复属**跨进程状态同步，本地单测覆盖不到，必须真机验证**。真机清单：① 首屏默认选中 = 组件当前学年；② App 内点 chip 回桌面组件**立刻**变；③ 桌面箭头切学年后重开 App 读回一致；④ 快速连点两 chip 终态 = 最后点的；⑤ 删光所选学年记录后两边回落一致；⑥ 保存/删除记录后组件刷新且学年不跳；⑦ 回归导出与启动自动检查更新。
+- 诊断与修复报告：`成果组件学年同步-诊断与修复.md`（仓库根 `Jicun/`，与方案文档平铺）。
+
+## v1.3.5 更新（历史）
 
 ### 一、启动时静默自动检查更新
 
@@ -142,6 +160,7 @@
   - ⚠️ **该 tag 指向 `dd78f45`，正好是 `2513123`（Gitee 镜像自动化）的父提交** —— 两者只差 5 分钟（打 tag 15:24，那次提交 15:29）。所以**这个已发布 APK 的 `UPDATE_MANIFEST_URL` 是空串：应用内更新仍然只走 GitHub Release 回退**，`release.yml` 里的三步 Gitee 同步也不在它里面（Release #3 的步骤表只有 10 步可证）。这不是缺陷（v1.1.0 同样如此），但**镜像要真正生效，得等 Gitee 仓库有分支且 `GITEE_TOKEN` / `GITEE_OWNER` / `GITEE_REPO` 配好之后重新发一版**（重指 tag 重跑，或出 v1.2.1）。配好之前重发没有意义——清单地址仍是空串，产物一模一样。
 - [x] **JVM 单元测试（v1.3.5 批次）：60 个用例全部通过**（`failures=0 errors=0`），含更新检查节流 17 条（`UpdateThrottleTest` 8 + `UpdateThrottleBoundaryTest` 9）。命令：`GRADLE_USER_HOME='E:\AIstudy\project\Jicun\zongce-android\.gradle-user' ./gradlew :app:testDebugUnitTest --rerun --console=plain --no-daemon -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`；结果看 `app/build/test-results/testDebugUnitTest/TEST-*.xml`。
 - [x] **编译 / 资源 / Manifest 处理通过**：`assembleDebug` 与 `assembleRelease` 的 `compileDebugKotlin`、`processDebugMainManifest`、`processDebugResources` 均为 executed 且成功（非 UP-TO-DATE），确认小组件返工删除 `AchievementListService` 与 `widget_achievement_item.xml` 后无悬空引用。另做全仓 grep 复核：`AchievementListService` / `widget_achievement_item` / `REMOTEVIEWS_SERVICE` 仅剩两处说明性注释，无任何代码或资源引用。
+- [x] **JVM 单元测试（v1.3.6 批次）：60 个用例全部通过**（`AcademicYearTest` 8 + `FileNameRuleTest` 3 + `ExportCheckTest` 3 + `ExportPlanTest` 17 + `UpdateCheckerTest` 12 + `UpdateThrottleBoundaryTest` 9 + `UpdateThrottleTest` 8，`failures=0 errors=0 skipped=0`），命令同上，结果 `BUILD SUCCESSFUL in 2m 29s`、`26 actionable tasks: 7 executed, 19 up-to-date`（`7 executed` 说明是真跑，非 UP-TO-DATE 假绿）。注：这 60 条覆盖的是纯逻辑，**跨进程同步不在覆盖范围内，需真机验证**。
 - [ ] **本地整包打包未跑通（环境问题，非代码问题）**：`mergeDebugGlobalSynthetics` 与 `mergeExtDexRelease` 两次分别失败，错误同为 `Could not move temporary workspace … .gradle-user/caches/transforms-4/<hash>-<uuid>` —— Windows 文件系统层的原子重命名被卡住，`--max-workers=1` 也规避不掉（同一根因在 v1.3.4 会话中已出现过一次）。已清理缓存里残留的临时目录后重跑。**dex 合并与 release 变体的最终打包以 CI（Linux）为准。**
 - [ ] 真机或模拟器功能验证（含成果小组件返工后的固定摘要渲染、拉伸、切学年行为）。
 
