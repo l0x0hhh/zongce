@@ -161,12 +161,15 @@
 - [x] **JVM 单元测试（v1.3.5 批次）：60 个用例全部通过**（`failures=0 errors=0`），含更新检查节流 17 条（`UpdateThrottleTest` 8 + `UpdateThrottleBoundaryTest` 9）。命令：`GRADLE_USER_HOME='E:\AIstudy\project\Jicun\zongce-android\.gradle-user' ./gradlew :app:testDebugUnitTest --rerun --console=plain --no-daemon -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`；结果看 `app/build/test-results/testDebugUnitTest/TEST-*.xml`。
 - [x] **编译 / 资源 / Manifest 处理通过**：`assembleDebug` 与 `assembleRelease` 的 `compileDebugKotlin`、`processDebugMainManifest`、`processDebugResources` 均为 executed 且成功（非 UP-TO-DATE），确认小组件返工删除 `AchievementListService` 与 `widget_achievement_item.xml` 后无悬空引用。另做全仓 grep 复核：`AchievementListService` / `widget_achievement_item` / `REMOTEVIEWS_SERVICE` 仅剩两处说明性注释，无任何代码或资源引用。
 - [x] **JVM 单元测试（v1.3.6 批次）：60 个用例全部通过**（`AcademicYearTest` 8 + `FileNameRuleTest` 3 + `ExportCheckTest` 3 + `ExportPlanTest` 17 + `UpdateCheckerTest` 12 + `UpdateThrottleBoundaryTest` 9 + `UpdateThrottleTest` 8，`failures=0 errors=0 skipped=0`），命令同上，结果 `BUILD SUCCESSFUL in 2m 29s`、`26 actionable tasks: 7 executed, 19 up-to-date`（`7 executed` 说明是真跑，非 UP-TO-DATE 假绿）。注：这 60 条覆盖的是纯逻辑，**跨进程同步不在覆盖范围内，需真机验证**。
+- [x] **正式 Release 已发布（2026-09-23）**：`暨存 v1.3.6` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.3.6 ，资产 `jicun-1.3.6.apk`（13,600,034 字节），Release 流水线 run `35843994511` **14 步全绿**（含 Gitee 镜像上传与清单发布）。线上包已下载回来复验：`aapt2 dump badging` 得 `com.zongce.app` / **versionCode `1000012`（> v1.3.5 的 `1000011`，可直接覆盖升级）** / versionName `1.3.6` / label 暨存；`apksigner verify` 通过，证书 SHA-256 `7a1eeb88…` 与本机 keystore 一致。Gitee 镜像 `latest.json` 已同步 `1.3.6`（apkUrl 指向镜像同名附件）；落地页 `https://jicun.netlify.app/downloads/jicun.apk` 已同步为同一体积、`Content-Type: application/vnd.android.package-archive` 正确。**注：v1.3.5 那次 Release 的 GitHub 附件上传失败（assets 为空）确属偶发，本次正常。**
+- [ ] 真机或模拟器功能验证（含成果小组件学年同步：App 内选完学年回桌面组件是否立刻刷新，以及固定摘要渲染、拉伸、桌面箭头切学年）。
 - [ ] **本地整包打包未跑通（环境问题，非代码问题）**：`mergeDebugGlobalSynthetics` 与 `mergeExtDexRelease` 两次分别失败，错误同为 `Could not move temporary workspace … .gradle-user/caches/transforms-4/<hash>-<uuid>` —— Windows 文件系统层的原子重命名被卡住，`--max-workers=1` 也规避不掉（同一根因在 v1.3.4 会话中已出现过一次）。已清理缓存里残留的临时目录后重跑。**dex 合并与 release 变体的最终打包以 CI（Linux）为准。**
-- [ ] 真机或模拟器功能验证（含成果小组件返工后的固定摘要渲染、拉伸、切学年行为）。
 
 ## 最近一次提交
 
-`daaa14b` `feat: 成果小组件迁移到 RemoteViews，列表可滑动、箭头就地切学年、修刷新 bug (v1.3.4)` —— 已推送至 `origin/main`，对应线上 tag `v1.3.4`（CI 发布于 2026-09-22）。
+`8c2af10` `fix: 成果组件学年同步——App 内选学年写入组件存储并推送刷新 (v1.3.6)` —— 已推送至 `origin/main`，对应 tag `v1.3.6`（2026-09-23 打 tag 走 CI 发布）。提交 `f71db8e`（v1.3.5）为其父提交。
+
+> 本版修复的 bug 自 v1.3.3 起横跨三个版本、换了三种实现都无效。根因是**状态源分裂**（详见本版本更新一节），诊断报告见仓库根 `Jicun/成果组件学年同步-诊断与修复.md`。
 
 > v1.3.5 的提交把**两批独立改动并入一次提交**（启动自动检查更新 + 成果小组件返工），提交信息里分别说明；版本记录卡本文件也在同一提交中更新。之所以合并而不是拆两个提交：两批改动各自都能独立编译，但同属一个版本、共用一个 tag，拆开只会让发版流程多一次推送与 CI 触发。
 
