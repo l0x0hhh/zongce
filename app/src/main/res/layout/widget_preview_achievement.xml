@@ -4,7 +4,7 @@
   不声明的话系统会拿应用图标当预览，用户根本看不到组件长什么样。
   这里是静态预览：内容写死成示例值，只为让用户看清布局，不代表真实数据。
   与真实 RemoteViews 组件（widget_achievement_list.xml）保持同一版式：
-  头部品牌行 + ‹ 学年 › 切换器，主体是成果列表（这里示意两条）。
+  头部品牌行 + ‹ 学年 › 切换器，主体是固定成果摘要（这里示意两条）。
   预览画布只有 110dp 高，条目间距比真实布局略收紧，避免示例内容被裁切。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"

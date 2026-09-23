@@ -6,15 +6,41 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.3.4` |
-| 版本状态 | 已打 tag `v1.3.4` 走 CI 发布（CI 签名路线连续第三版）。签名口令仍未取回，密码管理器是唯一明文来源 |
-| 最近更新 | 2026-09-22 |
-| Android 应用版本 | `versionName 1.3.4`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本地验证包手动传 `-PreleaseVersionCode=1000009`（线上 v1.3.2 = run #8 = 1000008，本地包须更高才能覆盖安装） |
+| 版本号 | `1.3.5` |
+| 版本状态 | 待打 tag `v1.3.5` 走 CI 发布。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
+| 最近更新 | 2026-09-23 |
+| Android 应用版本 | `versionName 1.3.5`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本机无口令构建不了可安装的验证包（历史做法是手动传 `-PreleaseVersionCode` 且须高于线上，例如 `1000009` > 线上 v1.3.2 的 `1000008`） |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | 与 `origin/main` 同步。上一版 `v1.3.3`（指向 `256a122`，CI 发布于 2026-09-22） |
+| 工作区状态 | 发布前 12 个文件待提交（启动自动检查更新 5 个 + 成果小组件返工 7 个），已核对与 `origin/main`（`daaa14b`）同步、无并发会话推进 HEAD |
 
-## 本版本更新（v1.3.4）
+## 本版本更新（v1.3.5）
+
+### 一、启动时静默自动检查更新
+
+- 背景：更新检查的主体（双源检查、更新弹窗、下载安装、权限、FileProvider、`UpdateCheckerTest`）早已就位，**唯一缺口是启动时没有自动触发** —— 此前必须用户自己点录入页右上角的「检查更新」。本版补上这一环。
+- **新增 `update/UpdateThrottle.kt`**：节流纯函数 `shouldAutoCheck(lastCheckedDate, today)` + SharedPreferences 读写（`update_prefs` / `last_auto_update_check_date`，存 `yyyy-MM-dd`）。**只记「成功完成」的日期，失败不记** —— 否则今天断网失败一次，用户一整天都不会再自动检查；只记成功才能让失败在下次启动自然重试。抽成不依赖 Android 的纯函数是为了能被 JVM 单测直接覆盖。
+- **`ui/AppViewModel.kt` 新增 `autoCheckForUpdate()`**，三条语义：
+  1. **静默**：不置 `Checking`（否则启动瞬间会弹出一个转圈的「正在检查更新」弹窗）；无新版、检查失败、断网、更新源未配置一律保持 `Idle`、只打一条 `Log.i`；仅确实有新版本时才置 `Available`，复用已有 `UpdateDialog` 弹出。
+  2. **每天最多一次**：今天已自动查过就直接跳过、不发网络请求。理由是 GitHub 未认证接口限流 60 次/小时/IP，App 面向全校学生，高峰冷启动容易被整段打满。
+  3. **并发保护**：正在检查/下载时直接跳过，不打断用户操作。
+  - 同时抽出 `private suspend fun runUpdateCheck()` 让手动与自动两条路径共用，避免逻辑各自漂移。
+- **`MainActivity.kt`** 在 `App()` 内、`Scaffold` 之前加 `LaunchedEffect(Unit) { vm.autoCheckForUpdate() }`。**手动入口「检查更新」行为一字未改**：照常显示 `Checking`、照常提示「已经是最新版本」、失败照常报错，且**不受每天一次限制**；手动成功后也刷新日期，避免用户刚手动查完、紧接着重开 App 又自动查一遍。
+- **竞态修复（QA 独立验证挖出的真缺陷）**：静默检查还在飞的时候用户手动点「检查更新」——手动守卫只看状态（此刻是 `Idle`）所以放行、置 `Checking`、发起第二条请求，两条协程并发写同一状态。后果是用户点了「稍后」把弹窗关掉之后，**晚到的静默结果又把弹窗弹回来**，现象像"关不掉"；或静默的 `Available` 覆盖掉手动检查正在显示的结果，用户看到自相矛盾的两次结论。
+  - 修法：新增 `manualCheckEpoch`，**手动检查开始时自增**；静默检查开始时记下快照，完成时若 epoch 已变则**整个静默结果作废**（连「今天已查」的日期也不记）。另加一道 `is Idle` 双保险。
+  - 为什么作废时也不记日期（看起来反直觉）：被作废必然意味着用户手动查过 —— 手动**成功**时手动路径自己已经记过日期（不会白查）；手动**失败**时才不记，而那正是「下次启动应当重查」的情形（那个已发现新版的静默结果被丢弃了，必须补一次）。所以这个取舍零回归。
+  - **关键认知：只判断「当前是否空闲」挡不住这个缺陷** —— 用户点「稍后」关掉弹窗后状态正好回到 `Idle`，晚到的静默结果照样判定通过、弹窗复活。**必须靠序号（epoch）**，`is Idle` 只是防御性补充。
+- 验证：`:app:testDebugUnitTest --rerun` **60 个用例全绿**（`failures=0 errors=0`），含新增 `UpdateThrottleTest` 8 条与 `UpdateThrottleBoundaryTest` 9 条边界用例。QA 两轮独立验证结论：`silentCheckRunning` 三条路径（正常/异常/取消）均复位、无用户可见泄漏；`runCatching` 会连带吞掉 `CancellationException`，但当前无用户可见后果（归类代码债，刻意不改为避免手动路径停在 `Checking`）；跨 00:00 完成才多查一次（窗口 <23 秒）与长期离线每次启动重试均判可接受。
+- **更新源线上实测（2026-09-23）**：Gitee 镜像 `latest.json` **1.2s**、GitHub Release API **7.1s**（贴近代码里 `CONNECT_TIMEOUT_MS = 8_000`，属危险边缘）。扫描线上 v1.3.4 APK 的三个 dex，确认镜像地址与 GitHub 地址**都已编译进包**，国内用户走镜像快链路。
+
+### 二、成果概览小组件改用固定摘要填充
+
+- **改为由 Provider 一次性填充固定三行摘要（`MAX_SUMMARY_ROWS = 3`），不再依赖 `RemoteViewsService`**，以规避不同桌面（尤其 ColorOS）对集合视图的兼容差异。这是对 v1.3.4「可滑动列表」路线的回退 —— 取舍是**兼容性优先于滚动**。
+- 具体改动：**删除** `widget/AchievementListService.kt` 与 `res/layout/widget_achievement_item.xml`；`widget_achievement_list.xml` 重写为「头部品牌行 + 学年 `‹ ›` 箭头 + 三行固定摘要 + 空态」；`AndroidManifest.xml` 移除 `BIND_REMOTEVIEWS_SERVICE` 的 service 注册、receiver 的 `exported` 改为 `true`；`widget_preview_achievement.xml` 与 `res/xml/jicun_achievement_widget_info.xml` 同步更新。
+- 学年切换仍走「箭头广播回 Provider 就地重渲染」，不出桌面；`WidgetYearStore` 的 `commit()` 同步写盘保持不变。
+- 验证：编译通过（包含在本次 60 用例测试的编译链路内）；**真机上的渲染、拉伸与切学年行为待装包确认**。
+
+## v1.3.4 更新（历史）
 
 - **成果概览小组件从 Glance 迁移到传统 RemoteViews：主体改为可滑动的成果列表**（本次改动的直接动机是用户三个诉求：① 组件内切学年不要再"跳进 App"；② 修复"选完学年组件不刷新"；③ 想把成果拉下来、显示不全就滑动。其中 ③ 是硬约束——**Glance 不支持滚动列表**，要把 ListView 映射进桌面小组件只有传统 RemoteViews 的集合视图一条路，故成果组件整体迁移；快速录入组件 `JicunWidget` 是纯入口无列表，留在 Glance 不动，仓库内自此两套小组件技术并存）。
   - **新增 `widget/AchievementListWidget.kt`**（`AppWidgetProvider`）：头部 `‹ 学年 ›` 箭头点击发广播回自身（`FLAG_IMMUTABLE`，targetSdk 35 强制），`WidgetYearStore.shift` 落盘后就地重渲染——全程不出桌面，`YearPickerActivity` 透明壳时代结束；到头方向的箭头置灰提示（仍可点、原地不动）。`setRemoteAdapter` 的 Intent 带 `System.nanoTime()` 唯一 Uri——**Intent 相等时系统复用旧 Adapter，`onDataSetChanged` 不跑、列表不刷新，这是 RemoteViews 经典坑**；三参重载（`appWidgetId` 版）API 31+ 才有，低版本走旧签名。列表挂 `setEmptyView` 空态、`setPendingIntentTemplate` + 条目 fill-in Intent 点开成果 tab。提供 `pushUpdate()` 供 `AppViewModel.refreshWidget()` 调用（切 `Dispatchers.IO`，内部查库）。
@@ -114,25 +140,16 @@
 - [x] **正式 Release 已发布（2026-09-21）**：`暨存 v1.1.0` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.1.0 ，资产 `jicun-1.1.0.apk`（11.41 MB）。Release 流水线 `#2`（提交 `0be3016`）10 个步骤全绿。**这是本仓库第一个 Release**：落地页所有下载入口、以及 App 内「检查更新」的 GitHub Release 回退路径，此前都指向一个空列表，现在有真实目标了。线上包已下载回来复验：`apksigner verify` 报 `Verifies`，证书与本机 keystore 一致，包信息 `com.zongce.app` / versionCode 1000002 / versionName 1.1.0。
 - [x] **正式 Release 已发布（2026-09-21）**：`暨存 v1.2.0` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.2.0 ，资产 `jicun-1.2.0.apk`（12.88 MB）。Release 流水线 `#3`（提交 `dd78f45`）10 个步骤全绿。**versionCode `1000003` > 线上 v1.1.0 的 `1000002`，可直接覆盖升级**（本地构建的 `versionCode` 默认是 2，装不上去，别再拿本地包做真机测试）。线上包已下载回来复验：`apksigner verify` 报 `Verifies`，证书 SHA-256 `7a1eeb88…` 与本机 keystore 一致；`aapt2 dump badging` 得 `com.zongce.app` / versionCode 1000003 / versionName 1.2.0 / label 暨存；小组件 receiver 与组件规格（180×110dp、3×2 格、`updatePeriodMillis=0`）都在包里。相比 v1.1.0 的 11.41 MB，体积 +1.47 MB（即 Glance 的代价）。
   - ⚠️ **该 tag 指向 `dd78f45`，正好是 `2513123`（Gitee 镜像自动化）的父提交** —— 两者只差 5 分钟（打 tag 15:24，那次提交 15:29）。所以**这个已发布 APK 的 `UPDATE_MANIFEST_URL` 是空串：应用内更新仍然只走 GitHub Release 回退**，`release.yml` 里的三步 Gitee 同步也不在它里面（Release #3 的步骤表只有 10 步可证）。这不是缺陷（v1.1.0 同样如此），但**镜像要真正生效，得等 Gitee 仓库有分支且 `GITEE_TOKEN` / `GITEE_OWNER` / `GITEE_REPO` 配好之后重新发一版**（重指 tag 重跑，或出 v1.2.1）。配好之前重发没有意义——清单地址仍是空串，产物一模一样。
-- [ ] 真机或模拟器功能验证。
+- [x] **JVM 单元测试（v1.3.5 批次）：60 个用例全部通过**（`failures=0 errors=0`），含更新检查节流 17 条（`UpdateThrottleTest` 8 + `UpdateThrottleBoundaryTest` 9）。命令：`GRADLE_USER_HOME='E:\AIstudy\project\Jicun\zongce-android\.gradle-user' ./gradlew :app:testDebugUnitTest --rerun --console=plain --no-daemon -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process`；结果看 `app/build/test-results/testDebugUnitTest/TEST-*.xml`。
+- [x] **编译 / 资源 / Manifest 处理通过**：`assembleDebug` 与 `assembleRelease` 的 `compileDebugKotlin`、`processDebugMainManifest`、`processDebugResources` 均为 executed 且成功（非 UP-TO-DATE），确认小组件返工删除 `AchievementListService` 与 `widget_achievement_item.xml` 后无悬空引用。另做全仓 grep 复核：`AchievementListService` / `widget_achievement_item` / `REMOTEVIEWS_SERVICE` 仅剩两处说明性注释，无任何代码或资源引用。
+- [ ] **本地整包打包未跑通（环境问题，非代码问题）**：`mergeDebugGlobalSynthetics` 与 `mergeExtDexRelease` 两次分别失败，错误同为 `Could not move temporary workspace … .gradle-user/caches/transforms-4/<hash>-<uuid>` —— Windows 文件系统层的原子重命名被卡住，`--max-workers=1` 也规避不掉（同一根因在 v1.3.4 会话中已出现过一次）。已清理缓存里残留的临时目录后重跑。**dex 合并与 release 变体的最终打包以 CI（Linux）为准。**
+- [ ] 真机或模拟器功能验证（含成果小组件返工后的固定摘要渲染、拉伸、切学年行为）。
 
 ## 最近一次提交
 
-`70b296a` `feat: confirm export check warnings before packing` —— 11 个文件，`+250 / -49`，已推送至 `origin/main`。
+`daaa14b` `feat: 成果小组件迁移到 RemoteViews，列表可滑动、箭头就地切学年、修刷新 bug (v1.3.4)` —— 已推送至 `origin/main`，对应线上 tag `v1.3.4`（CI 发布于 2026-09-22）。
 
-| 文件 | 改动 |
-| --- | --- |
-| `.gitignore` | 增加 `.gradle-user/`、`worker-info.log`、`hs_err_pid*.log` |
-| `AGENTS.md` | 补「仓库完整路径必须全 ASCII」；新增两条规范：档位参数不得用「随今天」的默认值、学年过滤只保留一份实现；测试必须显式钉住学年 |
-| `README.md` / `README.en.md` | 命令行章节补 ASCII 路径要求与 `.gradle-user` 用法 |
-| `export/ExportCheck.kt` | 抽出 `targetItems()` / `excludedCount()` 供界面与导出共用；`run()` 的 `targetYear` 改必填 |
-| `export/ZipExporter.kt` | `export()` 的 `targetYear` 改必填；移除仅服务于该默认值的 `AcademicYear` 导入 |
-| `ui/AppViewModel.kt` | 新增 `ExportState.Confirm` 与 `confirmExport()`；`checkBeforeExport()` 的 `targetYear` 改必填、改为把全量记录交给体检 |
-| `ui/ExportScreen.kt` | 新增提醒确认分支（继续导出 / 返回修改）；学年下拉仅在 `Idle` / `Blocked` 开放 |
-| `test/.../ExportCheckTest.kt` | 时间依赖修复 + 新增 2 个用例（选填字段只提醒、跨学年只提示） |
-| `CODE_STRUCTURE.md` | 同步导出流程、状态枚举与测试覆盖说明 |
-
-这一批是一个整体（同一批体检/导出流程的修复与增强），不要再拆成"测试文件一个提交、源码一个提交"——先提交的那一半无法编译。
+> v1.3.5 的提交把**两批独立改动并入一次提交**（启动自动检查更新 + 成果小组件返工），提交信息里分别说明；版本记录卡本文件也在同一提交中更新。之所以合并而不是拆两个提交：两批改动各自都能独立编译，但同属一个版本、共用一个 tag，拆开只会让发版流程多一次推送与 CI 触发。
 
 ### 已知待处理
 

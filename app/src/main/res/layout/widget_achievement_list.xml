@@ -1,10 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  成果概览小组件（RemoteViews 版）的真实布局：
-  头部（logo + 暨存 + ‹ 学年 › 切换器）+ 可滑动的成果 ListView + 空态占位。
-  ListView 由 AchievementListService 喂数，组件拉大后自动多显示几条（resizeMode 已配）。
-  学年文字与箭头状态色由 AchievementListWidget 在代码里设置。
--->
+<!-- 成果概览小组件：固定摘要行由 Provider 一次性填充，不依赖 RemoteViewsService。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -14,7 +9,6 @@
     android:padding="12dp"
     tools:ignore="HardcodedText">
 
-    <!-- 头部：品牌行 + 学年切换器，箭头点击由代码挂 PendingIntent。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -36,7 +30,6 @@
             android:textSize="13sp"
             android:textStyle="bold" />
 
-        <!-- 占位，把学年切换器推到行尾。 -->
         <View
             android:layout_width="0dp"
             android:layout_height="1dp"
@@ -56,7 +49,7 @@
             android:id="@+id/widget_year"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text=""
+            android:text="学年"
             android:textColor="#FF5D6875"
             android:textSize="11sp" />
 
@@ -71,17 +64,15 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 成果列表：占满剩余空间，条目来自 AchievementListService。 -->
-    <ListView
-        android:id="@+id/achievement_list"
+    <TextView
+        android:id="@+id/widget_count"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:divider="#FFE3E8EE"
-        android:dividerHeight="1dp"
-        android:paddingTop="4dp" />
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:text="共 0 条"
+        android:textColor="#FF5D6875"
+        android:textSize="11sp" />
 
-    <!-- 空态：setEmptyView 接管显隐（列表空时显示、非空时隐藏），布局里默认 gone。 -->
     <TextView
         android:id="@+id/achievement_empty"
         android:layout_width="match_parent"
@@ -92,4 +83,122 @@
         android:textColor="#FF5D6875"
         android:textSize="11sp"
         android:visibility="gone" />
+
+    <!-- 三条固定摘要行：桌面只需渲染普通 RemoteViews，不再启动外部数据服务。 -->
+    <LinearLayout
+        android:id="@+id/widget_row_1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="6dp">
+        <TextView
+            android:id="@+id/widget_row_dot_1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="●"
+            android:textColor="#FF8E8E93"
+            android:textSize="10sp" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/widget_row_name_1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FF18202B"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/widget_row_meta_1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FF5D6875"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_row_2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="6dp">
+        <TextView
+            android:id="@+id/widget_row_dot_2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="●"
+            android:textColor="#FF8E8E93"
+            android:textSize="10sp" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/widget_row_name_2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FF18202B"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/widget_row_meta_2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FF5D6875"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_row_3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="6dp">
+        <TextView
+            android:id="@+id/widget_row_dot_3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="●"
+            android:textColor="#FF8E8E93"
+            android:textSize="10sp" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/widget_row_name_3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FF18202B"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/widget_row_meta_3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FF5D6875"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </LinearLayout>
 </LinearLayout>

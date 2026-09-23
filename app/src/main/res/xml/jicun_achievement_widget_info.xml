@@ -7,7 +7,7 @@
   updatePeriodMillis=0：不靠定时轮询，由 AppViewModel.refreshWidget() 在保存/删除记录后主动推送。
   本组件对 Room 只读，不写、不参与照片生命周期（见 docs/adr/0002）。
   组件已从 Glance 迁移到传统 RemoteViews：initialLayout 直接指向真实布局
-  （widget_achievement_list），列表主体可垂直滑动，头部 ‹ 学年 › 箭头就地切学年。
+  （widget_achievement_list），主体显示固定的三条成果摘要，头部 ‹ 学年 › 箭头就地切学年。
   previewImage 是预渲染位图（drawable-nodpi/widget_preview_achievement_img.png，由 tmp/
   gen_widget_previews.py 生成）：ColorOS 的「原子组件」选择器不渲染 previewLayout，会回落到
   应用图标，位图兜底；API 31+ 支持的启动器继续用 previewLayout，两者共存。

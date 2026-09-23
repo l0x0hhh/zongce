@@ -1,17 +1,4 @@
-// 第二个桌面小组件：成果概览（RemoteViews 版）。
-//
-// 与 JicunWidget（拍照/相册入口）并列存在，两者职责刻意分开：
-//   JicunWidget           —— 写入口。只发 Intent，不碰数据库（ADR-0001），绝对不动。
-//   AchievementListWidget —— 只读展示。会读 Room，但绝不写入、不参与照片生命周期（ADR-0002）。
-//
-// 旧版是 Glance 实现：主体是一张静态卡片，切学年要弹透明壳 YearPickerActivity。
-// 本次按用户诉求改为传统 RemoteViews：
-//   1. 头部放 ‹ 学年 › 箭头，点击发广播就地切学年 —— 不出桌面、不弹 Activity；
-//   2. 主体是 ListView（RemoteViewsService 喂数），手指可垂直滑动，组件拉大自动多显示几条；
-//   3. 学年落盘改用 commit()（见 WidgetYearStore），修掉"选完学年组件不刷新"的异步写盘 bug。
-//
-// updatePeriodMillis 仍为 0，不做轮询 —— 桌面上的内容必须和 App 里看到的一致，
-// 靠 AppViewModel.refreshWidget() → pushUpdate() 推送，不靠定时拉。
+// 成果概览小组件：用 Provider 一次性填充固定摘要，避免桌面对 RemoteViewsService 的兼容差异。
 package com.zongce.app.widget
 
 import android.app.PendingIntent
@@ -21,15 +8,19 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
+import android.view.View
 import android.widget.RemoteViews
 import com.zongce.app.MainActivity
 import com.zongce.app.R
 import com.zongce.app.WidgetActions
 import com.zongce.app.core.AcademicYear
 import com.zongce.app.data.AppDatabase
+import com.zongce.app.data.RecordWithPhotos
+import com.zongce.app.data.Wuyu
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AchievementListWidget : AppWidgetProvider() {
 
@@ -37,37 +28,52 @@ class AchievementListWidget : AppWidgetProvider() {
         const val ACTION_PREV_YEAR = "com.zongce.app.action.WIDGET_YEAR_PREV"
         const val ACTION_NEXT_YEAR = "com.zongce.app.action.WIDGET_YEAR_NEXT"
 
-        // 头部箭头的两种状态色：可点方向深墨、到头方向置灰（仍可点，但原地不动）。
+        private const val MAX_SUMMARY_ROWS = 3
         private val ArrowEnabled = 0xFF18202B.toInt()
         private val ArrowDisabled = 0xFFC7D0DA.toInt()
 
-        /**
-         * 数据（保存/删除记录）变化后由 AppViewModel 调用，把桌面上所有实例推成最新。
-         * 组件没有实例时（用户还没添加到桌面）直接返回，不做无谓的查库。
-         */
-        fun pushUpdate(context: Context) {
+        private data class RowIds(
+            val root: Int,
+            val dot: Int,
+            val name: Int,
+            val meta: Int
+        )
+
+        private val SummaryRows = listOf(
+            RowIds(R.id.widget_row_1, R.id.widget_row_dot_1, R.id.widget_row_name_1, R.id.widget_row_meta_1),
+            RowIds(R.id.widget_row_2, R.id.widget_row_dot_2, R.id.widget_row_name_2, R.id.widget_row_meta_2),
+            RowIds(R.id.widget_row_3, R.id.widget_row_dot_3, R.id.widget_row_name_3, R.id.widget_row_meta_3)
+        )
+
+        /** 保存/删除记录后主动推送所有已添加的成果组件。调用方应在 IO 协程中执行。 */
+        suspend fun pushUpdate(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(
                 ComponentName(context, AchievementListWidget::class.java)
             )
             if (ids.isEmpty()) return
             for (id in ids) updateOne(context, manager, id)
-            // 列表数据可能也变了（新记录/删记录），通知所有实例重新走 onDataSetChanged。
-            manager.notifyAppWidgetViewDataChanged(ids, R.id.achievement_list)
         }
 
-        /**
-         * 渲染单个组件实例：头部（学年 + 箭头状态）+ 列表挂接。
-         * 在主线程调用时查库用 runBlocking —— 数据量小（<10ms），见 WidgetYearStore 注释。
-         */
-        private fun updateOne(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
-            val years = loadYears(context)
+        /** 在 IO 线程读取一次 Room，然后把当前学年的摘要直接写进 RemoteViews。 */
+        private suspend fun updateOne(
+            context: Context,
+            manager: AppWidgetManager,
+            appWidgetId: Int
+        ) {
+            val allItems = loadItems(context)
+            val years = AcademicYear.yearsOf(allItems.map { it.record.awardDate })
             val year = WidgetYearStore.current(context, years)
+            val yearItems = allItems
+                .filter { AcademicYear.belongsTo(it.record.awardDate, year) }
+                .sortedByDescending { it.record.awardDate }
+            val summaryItems = yearItems.take(MAX_SUMMARY_ROWS)
+            val openAchievement = openAchievementPendingIntent(context, appWidgetId)
             val index = years.indexOf(year).coerceAtLeast(0)
 
             val views = RemoteViews(context.packageName, R.layout.widget_achievement_list).apply {
                 setTextViewText(R.id.widget_year, year)
-                // 到头的方向置灰提示"没有更早/更晚的学年"；可点方向保持深色。
+                setTextViewText(R.id.widget_count, "共 ${yearItems.size} 条")
                 setTextColor(
                     R.id.widget_prev_year,
                     if (index <= 0) ArrowDisabled else ArrowEnabled
@@ -84,45 +90,57 @@ class AchievementListWidget : AppWidgetProvider() {
                     R.id.widget_next_year,
                     yearShiftPendingIntent(context, appWidgetId, ACTION_NEXT_YEAR)
                 )
-
-                // RemoteViews 列表不刷新的经典坑：喂给 setRemoteAdapter 的 Intent
-                // 如果和上次相等，系统会复用旧 Adapter，onDataSetChanged 根本不跑。
-                // 每次造一个唯一 Uri 强制重建。3 参重载 API 31 才有，低版本走旧签名。
-                val listIntent = Intent(context, AchievementListService::class.java).apply {
-                    data = Uri.fromParts("content", "achievement_${System.nanoTime()}", null)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    setRemoteAdapter(appWidgetId, R.id.achievement_list, listIntent)
-                } else {
-                    @Suppress("DEPRECATION")
-                    setRemoteAdapter(R.id.achievement_list, listIntent)
-                }
-                setEmptyView(R.id.achievement_list, R.id.achievement_empty)
-
-                // 条目点击模板：fill-in Intent 不带 action，最终生效的就是这里的
-                // OPEN_ACHIEVEMENT —— MainActivity 靠它落到成果 tab。
-                val openAchievement = PendingIntent.getActivity(
-                    context,
-                    appWidgetId,
-                    Intent(context, MainActivity::class.java)
-                        .setAction(WidgetActions.OPEN_ACHIEVEMENT)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                setViewVisibility(
+                    R.id.achievement_empty,
+                    if (yearItems.isEmpty()) View.VISIBLE else View.GONE
                 )
-                setPendingIntentTemplate(R.id.achievement_list, openAchievement)
+
+                SummaryRows.forEachIndexed { rowIndex, row ->
+                    bindRow(this, row, summaryItems.getOrNull(rowIndex), openAchievement)
+                }
             }
             manager.updateAppWidget(appWidgetId, views)
         }
 
-        /** 全量记录推出的学年列表（降序、必含当前学年）。查库失败按"只有当前学年"处理。 */
-        private fun loadYears(context: Context): List<String> {
-            val items = runCatching {
-                runBlocking { AppDatabase.get(context).awardDao().allWithPhotos().first() }
-            }.getOrDefault(emptyList())
-            return AcademicYear.yearsOf(items.map { it.record.awardDate })
+        private fun bindRow(
+            views: RemoteViews,
+            row: RowIds,
+            item: RecordWithPhotos?,
+            openAchievement: PendingIntent
+        ) {
+            if (item == null) {
+                views.setViewVisibility(row.root, View.GONE)
+                return
+            }
+
+            val record = item.record
+            views.setViewVisibility(row.root, View.VISIBLE)
+            views.setTextViewText(row.name, record.awardName.ifBlank { "未填写获奖名称" })
+            views.setTextViewText(
+                row.meta,
+                "${record.wuyu.ifBlank { "未分类" }} · ${record.awardDate.ifBlank { "未填写时间" }}"
+            )
+            views.setTextColor(row.dot, dotColor(record.wuyu))
+            views.setOnClickPendingIntent(row.root, openAchievement)
         }
 
-        /** 箭头点击 → 广播回自身。data 唯一化，避免不同 action/实例的 PendingIntent 互相顶掉。 */
+        private suspend fun loadItems(context: Context): List<RecordWithPhotos> = runCatching {
+            AppDatabase.get(context).awardDao().allWithPhotos().first()
+        }.getOrDefault(emptyList())
+
+        private fun openAchievementPendingIntent(
+            context: Context,
+            appWidgetId: Int
+        ): PendingIntent = PendingIntent.getActivity(
+            context,
+            appWidgetId,
+            Intent(context, MainActivity::class.java)
+                .setAction(WidgetActions.OPEN_ACHIEVEMENT)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        /** 箭头点击回到本 Provider；data 唯一化避免不同实例互相覆盖 PendingIntent。 */
         private fun yearShiftPendingIntent(
             context: Context,
             appWidgetId: Int,
@@ -147,13 +165,17 @@ class AchievementListWidget : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
-        for (id in appWidgetIds) updateOne(context, appWidgetManager, id)
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                for (id in appWidgetIds) updateOne(context, appWidgetManager, id)
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 
-    /**
-     * 处理箭头广播：shift 写盘（commit 同步）后立刻重渲染所有实例。
-     * 广播在主线程到达，WidgetYearStore.shift 内部查库很小，runBlocking 足够。
-     */
+    /** 切换学年后在后台重绘标题、总数和三条摘要。 */
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val direction = when (intent.action) {
@@ -161,16 +183,29 @@ class AchievementListWidget : AppWidgetProvider() {
             ACTION_NEXT_YEAR -> 1
             else -> return
         }
-        val manager = AppWidgetManager.getInstance(context)
-        val ids = manager.getAppWidgetIds(
-            ComponentName(context, AchievementListWidget::class.java)
-        )
-        if (ids.isEmpty()) return
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val manager = AppWidgetManager.getInstance(context)
+                val ids = manager.getAppWidgetIds(
+                    ComponentName(context, AchievementListWidget::class.java)
+                )
+                if (ids.isEmpty()) return@launch
 
-        runBlocking { WidgetYearStore.shift(context, direction) }
-
-        // 头部（学年文字 + 箭头灰态）和列表（换了一组条目）都要变，两步各管各的。
-        for (id in ids) updateOne(context, manager, id)
-        manager.notifyAppWidgetViewDataChanged(ids, R.id.achievement_list)
+                WidgetYearStore.shift(context, direction)
+                for (id in ids) updateOne(context, manager, id)
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
+}
+
+private fun dotColor(wuyu: String): Int = when (wuyu) {
+    Wuyu.DE -> 0xFF3B7DD8.toInt()
+    Wuyu.ZHI -> 0xFF7A5AF8.toInt()
+    Wuyu.TI -> 0xFF2FA36B.toInt()
+    Wuyu.MEI -> 0xFFE0603C.toInt()
+    Wuyu.LAO -> 0xFFC9912A.toInt()
+    else -> 0xFF8E8E93.toInt()
 }

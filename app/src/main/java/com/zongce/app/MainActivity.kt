@@ -115,6 +115,10 @@ private fun App(
         }
     }
 
+    // 启动即静默检查一次更新（每天最多一次；无新版或失败都不打扰用户）。
+    // 用 Unit 作 key，保证整个 App 组合期间只触发一次，不会随重组反复发请求。
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.autoCheckForUpdate() }
+
     Scaffold(
         bottomBar = {
             if (currentRoute in tabs.map { it.route }) {
