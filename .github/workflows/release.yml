@@ -24,6 +24,13 @@ on:
         required: true
         type: string
 
+# 发版不能并发跑：两个 run 同时往同一个 Gitee release 传附件会互相踩。
+# 但也不自动取消在跑的那个（cancel-in-progress: false）——上传一半被打断更麻烦，
+# 后触发的排队等着就行。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -100,6 +107,7 @@ jobs:
       # GitHub 发布放在镜像之前：镜像那几步万一失败，正式包也已经发出去了，
       # 失败只会表现为"GitHub 成功、镜像没同步"，看得见、也不丢东西。
       - name: Create GitHub Release
+        id: github_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
@@ -111,6 +119,7 @@ jobs:
       # 顺序刻意是「先附件、后清单」：清单一旦上线就会被用户读到，
       # 反过来会出现一段"用户点了更新却 404"的窗口。
       - name: Upload APK to the Gitee mirror
+        id: mirror_attachment
         if: env.MIRROR_BRANCH != ''
         run: |
           set -euo pipefail
@@ -143,19 +152,35 @@ jobs:
                   "${API}/releases/${REL_ID}/attach_files/${fid}?access_token=${GITEE_TOKEN}"
               done
 
-          # 上传：multipart/form-data，文件字段名固定为 file
-          CODE=$(curl -s --connect-timeout 30 --max-time 1200 -o /tmp/gitee-attach.json -w '%{http_code}' -X POST \
-            "${API}/releases/${REL_ID}/attach_files" \
-            -F "access_token=${GITEE_TOKEN}" \
-            -F "file=@${APK}")
-          echo "上传返回 HTTP ${CODE}"
-          cat /tmp/gitee-attach.json
-          [ "$CODE" = "201" ] || { echo "::error::向 Gitee 上传 ${APK} 失败"; exit 1; }
+          # 上传：multipart/form-data，文件字段名固定为 file。
+          # 13MB 走国际链路本来就慢，偶发失败是常态（v1.4.0 就是一次失败把后面全带走了），
+          # 所以要重试：最多 3 次，每次间隔 30 秒，只认 HTTP 201 才算成功。
+          CODE=""
+          for attempt in 1 2 3; do
+            echo "第 ${attempt} 次上传 ${APK}（$(du -h "$APK" | cut -f1)）"
+            # 用 || CODE=000 兜住 curl 自身的失败（连接中断、超时），
+            # 否则 set -e 会在第一次网络抖动时就直接把脚本掐掉，根本走不到重试。
+            CODE=$(curl -s --connect-timeout 30 --max-time 1200 -o /tmp/gitee-attach.json -w '%{http_code}' -X POST \
+              "${API}/releases/${REL_ID}/attach_files" \
+              -F "access_token=${GITEE_TOKEN}" \
+              -F "file=@${APK}") || CODE="000"
+            echo "上传返回 HTTP ${CODE}"
+            if [ -f /tmp/gitee-attach.json ]; then cat /tmp/gitee-attach.json; fi
+            if [ "$CODE" = "201" ]; then break; fi
+            if [ "$attempt" -lt 3 ]; then echo "未成功，30 秒后重试"; sleep 30; fi
+          done
+          if [ "$CODE" != "201" ]; then
+            echo "::error::向 Gitee 上传 ${APK} 三次都失败（最后一次 HTTP ${CODE}）。镜像本轮不会更新，GitHub 正式发布不受影响。"
+            exit 1
+          fi
 
       # 清单用 git push 更新（而不是 contents API）：语义明确、没有"新建还是更新、要不要 sha"的歧义，
       # 镜像仓库只有一个 JSON，克隆成本可以忽略。
+      # 附件没传成功就绝对不要写清单：清单里的 apkUrl 指向 Gitee 附件，
+      # 附件不存在等于给用户一个 404 的更新按钮。所以这一步盯的是上一步的 outcome。
       - name: Publish the mirror manifest
-        if: env.MIRROR_BRANCH != ''
+        id: mirror_manifest
+        if: always() && env.MIRROR_BRANCH != '' && steps.mirror_attachment.outcome == 'success'
         run: |
           set -euo pipefail
           V="${RELEASE_VERSION#v}"
@@ -163,8 +188,11 @@ jobs:
           APK_URL="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/${RELEASE_TAG}/${APK}"
           WORK="$RUNNER_TEMP/gitee-mirror"
 
-          git clone --depth 1 \
-            "https://${GITEE_OWNER}:${GITEE_TOKEN}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" "$WORK"
+          # 令牌走 Authorization 头，不拼进 URL：拼进 URL 时若令牌含特殊字符会被
+          # percent-encode，GitHub 的 secret 掩码就认不出来了，有漏进日志的风险。
+          AUTH=$(printf '%s:%s' "${GITEE_OWNER}" "${GITEE_TOKEN}" | base64 -w0)
+          git -c "http.extraheader=Authorization: Basic ${AUTH}" clone --depth 1 \
+            "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" "$WORK"
           cat > "$WORK/latest.json" <<JSON
           {
             "version": "${V}",
@@ -178,31 +206,47 @@ jobs:
           git -C "$WORK" add -A
           git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
             commit -q -m "release: 暨存 ${V}"
-          git -C "$WORK" push -q origin "HEAD:${MIRROR_BRANCH}"
+          git -C "$WORK" -c "http.extraheader=Authorization: Basic ${AUTH}" \
+            push -q origin "HEAD:${MIRROR_BRANCH}"
 
           # 回读校验：确认清单真的能被匿名读到、且版本号对得上。
           # 国内镜像的全部价值就是"用户能读到它"，没校验过的写入不算写完。
           # 必须带 -L：Gitee 的 /raw/ 会 302 跳到 raw.giteeusercontent.com，
           # 不跟跳转只会抓到那个跳转页 HTML，导致误报"内容里没有版本号"（v1.2.1 就栽在这）。
-          sleep 5
-          FETCHED=$(curl -sL -f --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 5 \
-            "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json")
-          echo "$FETCHED"
-          echo "$FETCHED" | grep -q "\"${V}\"" \
-            || { echo "::error::清单回读校验失败：读到的内容里没有版本号 ${V}"; exit 1; }
+          # 一回合一回合地等，而不是"睡 5 秒查一次就定罪"：Gitee 的 raw 走 CDN，
+          # 刚 push 完立刻读经常拿回旧内容。v1.3.5 就是这么被误判失败的——
+          # 文件其实写进去了，却把整条流水线判死、还连累了后面的落地页同步。
+          # 最多等 6 × 15 = 90 秒；这段只在附件成功后才跑，不值得为它省时间。
+          OK=0
+          for attempt in $(seq 1 6); do
+            sleep 15
+            FETCHED=$(curl -sL -f --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 5 \
+              "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json") || FETCHED=""
+            echo "第 ${attempt} 次回读：${FETCHED}"
+            if echo "$FETCHED" | grep -q "\"${V}\""; then OK=1; break; fi
+          done
+          if [ "$OK" != "1" ]; then
+            echo "::error::清单回读校验失败：等了 90 秒仍读不到版本号 ${V}"
+            exit 1
+          fi
           echo "镜像清单已就绪：https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json"
 
       # ---------- 宣传页（落地页自托管安装包）----------
       # 落地页把 APK 放在自己站点里，下载才是同源直下、且能带正确的 Content-Type
       # （第三方图床会把 APK 标成 application/zip，安卓浏览器就存成 .zip）。
       # 和 Gitee 镜像一样：没配令牌就整段跳过，绝不拦住正式发布。
+      # always()：这一步只依赖本地那个 APK 文件，跟 Gitee 镜像成不成无关。
+      # 之前写的是 env.LANDING_TOKEN != ''，结果镜像一失败它就跟着 skipped，
+      # 官网的安装包从此落后一个大版本（v1.4.0 就是这么卡在 1.3.6 的）。
       - name: Publish the APK to the landing page
-        if: env.LANDING_TOKEN != ''
+        id: landing_apk
+        if: always() && env.LANDING_TOKEN != ''
         run: |
           set -euo pipefail
           WORK="$RUNNER_TEMP/landing"
-          git clone --depth 1 \
-            "https://x-access-token:${LANDING_TOKEN}@github.com/${LANDING_REPO}.git" "$WORK"
+          AUTH=$(printf 'x-access-token:%s' "${LANDING_TOKEN}" | base64 -w0)
+          git -c "http.extraheader=Authorization: Basic ${AUTH}" clone --depth 1 \
+            "https://github.com/${LANDING_REPO}.git" "$WORK"
           mkdir -p "$WORK/public/downloads"
           cp "jicun-${RELEASE_VERSION#v}.apk" "$WORK/public/downloads/jicun.apk"
           # 用 status --porcelain 判变化（git diff 看不出新增的未跟踪文件，踩过这个坑）。
@@ -213,5 +257,30 @@ jobs:
           git -C "$WORK" add public/downloads/jicun.apk
           git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
             commit -q -m "chore: sync APK from 暨存 ${RELEASE_VERSION#v}"
-          git -C "$WORK" push -q origin HEAD
+          git -C "$WORK" -c "http.extraheader=Authorization: Basic ${AUTH}" push -q origin HEAD
           echo "已同步到落地页：public/downloads/jicun.apk（Netlify 会自动重新部署）"
+
+      # 一眼看清四个分发点各自的成败。以前镜像失败会让 run 直接红掉、
+      # 后面的跳过点只在折叠的日志里躺着，得点开才看得见。
+      - name: Summarise the release
+        if: always()
+        env:
+          GITHUB_REL: ${{ steps.github_release.outcome }}
+          ATTACHMENT: ${{ steps.mirror_attachment.outcome }}
+          MANIFEST: ${{ steps.mirror_manifest.outcome }}
+          LANDING: ${{ steps.landing_apk.outcome }}
+        run: |
+          V="${RELEASE_VERSION#v}"
+          label() { case "$1" in success) echo "已同步";; skipped) echo "跳过";; *) echo "失败";; esac; }
+          {
+            echo "### 暨存 ${V} 分发结果"
+            echo ""
+            echo "| 分发点 | 结果 |"
+            echo "| --- | --- |"
+            echo "| GitHub Release | $(label "$GITHUB_REL") |"
+            echo "| Gitee 镜像附件 | $(label "$ATTACHMENT") |"
+            echo "| Gitee 镜像清单 | $(label "$MANIFEST") |"
+            echo "| 落地页安装包 | $(label "$LANDING") |"
+            echo ""
+            echo "镜像未同步时，应用仍能通过 GitHub 源检查到 ${V}，只是国内下载会慢。"
+          } >> "$GITHUB_STEP_SUMMARY"

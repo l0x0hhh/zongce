@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
 
+# 同一分支又推了新提交，就把还在跑的旧任务取消掉：省机器，也少等一轮。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -26,6 +31,25 @@ jobs:
         run: chmod +x gradlew
       - name: Run unit tests
         run: ./gradlew test --no-daemon
+
+      # 测试挂了也要留证据：报告里有"哪条用例失败、断在哪一行"，光翻日志很难读。
+      # always() 是必须的——测试失败时后续步骤默认全被跳过，而那时候恰恰最需要报告。
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.sha }}
+          path: |
+            app/build/reports/tests
+            app/build/test-results
+          retention-days: 7
+
+      # release 构建路径（签名分支、BuildConfig 注入、proguard 规则）原先只在打 tag 时才走到，
+      # 一出问题就是"发版当天才发现"。这里没有密钥也能构建一遍（缺签名参数时会自动跳过签名），
+      # 把这类雷提前排掉。
+      - name: Assemble release APK (smoke test)
+        run: ./gradlew :app:assembleRelease --no-daemon
+
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
       - name: Upload debug APK
