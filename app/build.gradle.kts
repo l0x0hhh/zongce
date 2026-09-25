@@ -99,7 +99,7 @@ dependencies {
     // 1.1.0 → 1.2.0：只有 1.2.0 才有 providePreview / previewSizeMode /
     // GlanceAppWidgetManager.setWidgetPreviews()（generated preview，API 35+）。
     // ⛔ 绝不能升到 1.3.0-alpha：它要求 AGP 9.2.0 / compileSdk 37，本项目是
-    //    AGP 8.5.2 / compileSdk 35，会直接把构建打挂。
+    //    AGP 8.6.0 / compileSdk 35，会直接把构建打挂。
     implementation("androidx.glance:glance-appwidget:1.2.0")
 
     // 规则测试：覆盖学年归属和导出文件名等不依赖 Android UI 的行为。
