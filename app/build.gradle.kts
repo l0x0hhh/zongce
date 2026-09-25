@@ -74,7 +74,10 @@ ksp {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2024.09.02"))
+    // Compose BOM 2024.09.02 → 2025.02.00：Glance 1.2.0 要求 compose runtime 1.7.8，
+    // 旧 BOM 只到 1.7.2。只升 Glance 不升 BOM 会让 runtime 被单独抬高而 ui/material3 留在
+    // 1.7.2，Compose 家族版本错配会出运行时崩溃，因此三件套必须同时升。
+    implementation(platform("androidx.compose:compose-bom:2025.02.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.material3:material3")
@@ -93,7 +96,11 @@ dependencies {
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // 桌面小组件：Glance 是 Compose 风格写 AppWidget 的官方适配层（见 docs/adr/0001）。
-    implementation("androidx.glance:glance-appwidget:1.1.0")
+    // 1.1.0 → 1.2.0：只有 1.2.0 才有 providePreview / previewSizeMode /
+    // GlanceAppWidgetManager.setWidgetPreviews()（generated preview，API 35+）。
+    // ⛔ 绝不能升到 1.3.0-alpha：它要求 AGP 9.2.0 / compileSdk 37，本项目是
+    //    AGP 8.5.2 / compileSdk 35，会直接把构建打挂。
+    implementation("androidx.glance:glance-appwidget:1.2.0")
 
     // 规则测试：覆盖学年归属和导出文件名等不依赖 Android UI 的行为。
     testImplementation("junit:junit:4.13.2")
