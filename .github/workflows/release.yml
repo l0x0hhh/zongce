@@ -112,7 +112,11 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: 暨存 ${{ env.RELEASE_VERSION }}
-          generate_release_notes: true
+          body: |
+            本次更新：
+            - 修复新增、编辑、删除成果后“我的成果”桌面组件不主动刷新的问题。
+            - 为“我的成果”组件增加系统选择器预览，添加组件时显示真实样式而非应用 logo。
+            - 更新弹窗展示完整功能说明，长内容可滚动查看。
           files: jicun-*.apk
 
       # ---------- 国内镜像（Gitee）----------

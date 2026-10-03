@@ -18,6 +18,7 @@ import com.zongce.app.data.PhotoStore
 import com.zongce.app.data.RecordDeletion
 import com.zongce.app.data.RecordWithPhotos
 import com.zongce.app.data.YearDeletePromptGate
+import com.zongce.app.widget.WidgetRefresh
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -134,6 +135,8 @@ class RecordViewModel(app: Application) : AndroidViewModel(app) {
                 if (photos.isNotEmpty()) dao.insertPhotos(photos)
             }
 
+            WidgetRefresh.refresh(getApplication())
+
             withContext(Dispatchers.Main) { onSaved(failures) }
         }
     }
@@ -214,6 +217,7 @@ class RecordViewModel(app: Application) : AndroidViewModel(app) {
                 // 用户在这条记录上刚加过照片而列表还没刷新时，Toast 会少报。
                 val fresh = dao.byId(item.record.id) ?: item
                 reportDeletion(deletion.delete(listOf(fresh)))
+                WidgetRefresh.refresh(getApplication())
             } catch (e: Exception) {
                 reportDeletionFailure(e)
             } finally {
@@ -239,6 +243,7 @@ class RecordViewModel(app: Application) : AndroidViewModel(app) {
                 val idSet = ids.toSet()
                 val records = all.filter { it.record.id in idSet }
                 reportDeletion(deletion.delete(records))
+                WidgetRefresh.refresh(getApplication())
                 exitSelectionMode()
             } catch (e: Exception) {
                 reportDeletionFailure(e)
@@ -269,6 +274,7 @@ class RecordViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 reportDeletion(deletion.delete(records))
+                WidgetRefresh.refresh(getApplication())
             } catch (e: Exception) {
                 reportDeletionFailure(e)
                 // 失败时放开闸门让用户能再试一次。闸门自己会把三个状态全部清干净，
@@ -325,6 +331,7 @@ class RecordViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 val year = achievementYearRequests.receive()
                 AchievementYearStore.set(getApplication(), year)
+                WidgetRefresh.refresh(getApplication())
             }
         }
     }
