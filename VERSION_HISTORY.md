@@ -46,6 +46,12 @@
 | 2 | `LocalLifecycleOwner`（`androidx.compose.ui.platform`）已 deprecated，替代实现在 `lifecycle-runtime-compose` | 引它等于新增依赖，而 `docs/design/system_design.md` §6 明确「不新增任何第三方依赖」；目前只是编译告警，行为正常 |
 | 3 | 删除链路与组件移除的真机验证 | 本机无签名口令，构建不了可安装验证包；发布后按上文「必须真机验证」六条清单回归 |
 
+## v1.5.2 更新（Netlify 更新镜像）
+
+- App 正式包将更新清单固定指向 Netlify 产品页，国内网络不再依赖 Gitee Release 附件。
+- 产品页同步 APK 时同时生成 `latest.json`，更新版本、说明和下载地址保持一致。
+- Gitee 附件上传步骤停用，避免镜像上传失败导致正式发布链路失败。
+
 ## v1.5.1 更新（组件刷新与更新说明）
 
 - 修复新增、编辑、删除成果后“我的成果”桌面组件不主动刷新的问题。
