@@ -10,8 +10,8 @@ import androidx.compose.ui.graphics.toArgb
 import com.zongce.app.R
 import com.zongce.app.core.AcademicYear
 import com.zongce.app.data.AppDatabase
-import com.zongce.app.data.AchievementYearStore
 import com.zongce.app.data.RecordWithPhotos
+import com.zongce.app.data.WidgetYearStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -32,7 +32,7 @@ data class AchievementWidgetRow(
 data class AchievementWidgetSnapshot(
     /** AcademicYear.yearsOf(全部日期)，恒含 LABEL，降序 */
     val years: List<String>,
-    /** AchievementYearStore.current()，已回落过的安全值 */
+    /** WidgetYearStore.current()，已回落过的安全值 */
     val year: String,
     /** 该学年条数（未截断） */
     val recordCount: Int,
@@ -77,8 +77,8 @@ object AchievementWidgetLoader {
 
                 val years = AcademicYear.yearsOf(items.map { it.record.awardDate })
                 // 学年归属全仓只有 AcademicYear 一处实现，这里禁止手写日期比较。
-                // current() 内部会在"存的学年已被删空"时回落到 LABEL，所以组件永远不会停在空学年。
-                val year = AchievementYearStore.current(app, years)
+                // 组件学年与 App 成果页偏好分开；删空当前学年时回落到 LABEL。
+                val year = WidgetYearStore.current(app, years)
 
                 // 排序必须在过滤之后：先筛出该学年，再按日期降序。
                 val ofYear = AcademicYear.inYear(items, year) { it.record.awardDate }

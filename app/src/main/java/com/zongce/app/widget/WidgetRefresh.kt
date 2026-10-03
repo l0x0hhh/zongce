@@ -8,9 +8,11 @@ import androidx.glance.appwidget.updateAll
 object WidgetRefresh {
     suspend fun refresh(context: Context) {
         runCatching {
+            Log.d("WidgetRefresh", "开始刷新成果组件")
             AchievementWidget().updateAll(context.applicationContext)
+            Log.d("WidgetRefresh", "成果组件刷新请求已提交")
         }.onFailure { error ->
-            Log.w("WidgetRefresh", "刷新成果组件失败，保留系统下次重绘机会", error)
+            Log.e("WidgetRefresh", "刷新成果组件失败", error)
         }
     }
 }

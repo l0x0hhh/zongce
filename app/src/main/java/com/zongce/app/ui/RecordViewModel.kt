@@ -330,8 +330,8 @@ class RecordViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             while (true) {
                 val year = achievementYearRequests.receive()
+                // App 学年只影响成果页，桌面组件使用自己的 WidgetYearStore。
                 AchievementYearStore.set(getApplication(), year)
-                WidgetRefresh.refresh(getApplication())
             }
         }
     }

@@ -62,29 +62,6 @@ private fun JicunWidgetContent() {
             .cornerRadius(22.dp)
             .padding(14.dp)
     ) {
-        // 标题行：点哪里都能打开 App（不带 action，走正常启动）。
-        Row(
-            modifier = GlanceModifier.clickable(openAppAction(context)),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Image(
-                provider = ImageProvider(R.drawable.widget_logo),
-                contentDescription = null,
-                modifier = GlanceModifier.size(22.dp)
-            )
-            Spacer(GlanceModifier.width(8.dp))
-            Text(
-                text = context.getString(R.string.app_name),
-                style = TextStyle(
-                    color = ColorProvider(InkColor),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            )
-        }
-
-        Spacer(GlanceModifier.height(12.dp))
-
         // 两个入口：拍照是主路径，用主色填充；相册是次路径，用浅蓝底。
         Row(modifier = GlanceModifier.fillMaxSize()) {
             EntryTile(
@@ -155,11 +132,5 @@ private fun entryAction(context: Context, action: String): Action =
     actionStartActivity(
         Intent(context, MainActivity::class.java)
             .setAction(action)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    )
-
-private fun openAppAction(context: Context): Action =
-    actionStartActivity(
-        Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     )

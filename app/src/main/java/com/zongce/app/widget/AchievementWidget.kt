@@ -14,8 +14,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.Image
-import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
 import androidx.glance.action.clickable
@@ -23,6 +21,9 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.PreviewSizeMode
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
+import androidx.glance.appwidget.action.actionRunCallback
+import androidx.glance.action.Action
+import androidx.glance.action.actionParametersOf
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
@@ -142,7 +143,7 @@ private fun AchievementWidgetContent(snapshot: AchievementWidgetSnapshot) {
             .cornerRadius(22.dp)
             .padding(12.dp)
     ) {
-        HeaderRow(snapshot = snapshot, onClick = openAchievement)
+        HeaderRow(snapshot = snapshot)
         Spacer(GlanceModifier.height(6.dp))
         StatsRow(snapshot = snapshot, context = context)
         Spacer(GlanceModifier.height(6.dp))
@@ -182,42 +183,59 @@ private fun AchievementWidgetContent(snapshot: AchievementWidgetSnapshot) {
     }
 }
 
-/** 标题行：logo + 暨存 + 当前学年。整行可点进成果页。 */
+/** 标题行：组件独立学年，左右箭头直接在桌面切换。 */
 @Composable
 private fun HeaderRow(
-    snapshot: AchievementWidgetSnapshot,
-    onClick: androidx.glance.action.Action
+    snapshot: AchievementWidgetSnapshot
 ) {
+    val previous = snapshot.years.indexOf(snapshot.year) - 1
+    val next = snapshot.years.indexOf(snapshot.year) + 1
     Row(
-        modifier = GlanceModifier
-            .fillMaxWidth()
-            .clickable(onClick),
+        modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            provider = ImageProvider(R.drawable.widget_logo),
-            contentDescription = null,
-            modifier = GlanceModifier.size(18.dp)
+        YearArrow(
+            label = "‹",
+            enabled = previous >= 0,
+            action = previous.takeIf { it >= 0 }?.let { yearAction(-1) }
         )
-        Spacer(GlanceModifier.width(6.dp))
-        Text(
-            text = LocalContext.current.getString(R.string.app_name),
-            style = TextStyle(
-                color = ColorProvider(WidgetPalette.Ink),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-        )
-        Spacer(GlanceModifier.width(0.dp))
         Text(
             text = snapshot.year,
+            modifier = GlanceModifier.defaultWeight(),
             style = TextStyle(
-                color = ColorProvider(WidgetPalette.SecondaryText),
-                fontSize = 11.sp
+                color = ColorProvider(WidgetPalette.Ink),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.glance.text.TextAlign.Center
             )
+        )
+        YearArrow(
+            label = "›",
+            enabled = next < snapshot.years.size,
+            action = next.takeIf { it < snapshot.years.size }?.let { yearAction(1) }
         )
     }
 }
+
+@Composable
+private fun YearArrow(label: String, enabled: Boolean, action: Action?) {
+    val modifier = GlanceModifier.size(28.dp)
+    Text(
+        text = label,
+        modifier = if (enabled && action != null) modifier.clickable(action) else modifier,
+        style = TextStyle(
+            color = ColorProvider(if (enabled) WidgetPalette.Ink else WidgetPalette.Disabled),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = androidx.glance.text.TextAlign.Center
+        )
+    )
+}
+
+private fun yearAction(delta: Int): Action =
+    actionRunCallback<WidgetYearActionCallback>(
+        actionParametersOf(WidgetYearActionCallback.DELTA_KEY to delta)
+    )
 
 /** 统计行：「12 条成果 │ 覆盖 4 育」。空学年也保留这一行（PRD 空态口径）。 */
 @Composable
