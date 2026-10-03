@@ -249,12 +249,20 @@ jobs:
             "https://github.com/${LANDING_REPO}.git" "$WORK"
           mkdir -p "$WORK/public/downloads"
           cp "jicun-${RELEASE_VERSION#v}.apk" "$WORK/public/downloads/jicun.apk"
+          cat > "$WORK/public/downloads/latest.json" <<JSON
+          {
+            "version": "${RELEASE_VERSION#v}",
+            "title": "暨存 ${RELEASE_VERSION#v}",
+            "notes": "本次版本包含功能改进和问题修复。",
+            "apkUrl": "https://jicun.netlify.app/downloads/jicun.apk"
+          }
+          JSON
           # 用 status --porcelain 判变化（git diff 看不出新增的未跟踪文件，踩过这个坑）。
-          if [ -z "$(git -C "$WORK" status --porcelain -- public/downloads/jicun.apk)" ]; then
+          if [ -z "$(git -C "$WORK" status --porcelain -- public/downloads/jicun.apk public/downloads/latest.json)" ]; then
             echo "落地页的安装包已是最新，无需提交。"
             exit 0
           fi
-          git -C "$WORK" add public/downloads/jicun.apk
+          git -C "$WORK" add public/downloads/jicun.apk public/downloads/latest.json
           git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
             commit -q -m "chore: sync APK from 暨存 ${RELEASE_VERSION#v}"
           git -C "$WORK" -c "http.extraheader=Authorization: Basic ${AUTH}" push -q origin HEAD
