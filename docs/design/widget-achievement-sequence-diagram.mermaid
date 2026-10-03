@@ -1,0 +1,88 @@
+sequenceDiagram
+    autonumber
+
+    box Aqua 桌面进程与系统
+        participant Host as AppWidgetHost(Launcher)
+        participant AWM as AppWidgetManager
+    end
+    box Beige App进程
+        participant ACBR as ActionCallbackBroadcastReceiver<br/>(goAsync / Dispatchers.Default)
+        participant SYA as SwitchYearAction<br/>(ActionCallback)
+        participant AYW as AchievementYearWriter<br/>(单消费者 Channel)
+        participant SP as AchievementYearStore<br/>(SharedPreferences commit)
+        participant WR as WidgetRefresh
+        participant GMM as GlanceAppWidgetManager
+        participant Worker as AppWidgetSessionWorker<br/>(WorkManager background)
+        participant WG as AchievementWidget
+        participant LD as AchievementWidgetLoader
+        participant DB as AppDatabase / AwardDao
+        participant VM as RecordViewModel<br/>(既有 - 修改点 W1-W5)
+        participant MA as MainActivity
+    end
+
+    Note over Host, DB: ============ 场景 A：组件内点 ‹ › 箭头切学年（P0-2 / P0-3） ============
+
+    Host->>ACBR: PendingIntent 广播（item FillInIntent + appWidgetId + deltas）
+    Note right of ACBR: goAsync() 已拿到 BroadcastReceiver.PendingResult<br/>协程跑在 Dispatchers.Default（后台线程池，非主线程）<br/>整个 onAction 受广播 ~10s 窗口约束
+    ACBR->>SYA: 反射实例化并调 onAction(context, glanceId, parameters)
+
+    SYA->>SYA: delta = parameters[YearDeltaKey] (-1 / +1)
+    SYA->>AYW: writeAndRefresh(context, delta)  【挂起 + await CompletableDeferred】
+
+    Note over AYW: 两条写入源（成果页 chip、组件箭头）共用这一个队列<br/>严格按入队顺序执行 —— 连点 3 次不会错序（v1.3.6 坑）
+    AYW->>LD: 读库算 years / 当前 year（组件侧不缓存学年列表）
+    LD->>DB: allWithPhotos().first()
+    DB-->>LD: List~RecordWithPhotos~
+    LD-->>AYW: years(降序, 恒含 LABEL) + year
+    AYW->>AYW: nextYear = years[index + delta]（越界则保持不变）
+    AYW->>SP: set(app, nextYear)  同步 commit() 立刻可读
+    AYW->>WR: refresh(app)   【写后立即推送】
+    WR->>GMM: getGlanceIds(AchievementWidget)
+    GMM-->>WR: List~GlanceId~（为空则直接 return，不查库）
+    WR->>WG: updateAll(app) 内部逐个 update(context, glanceId)
+    AYW-->>SYA: resume（写盘 + 推送已串行完成）
+
+    WR->>Worker: SessionManager 起 SessionWorker（背景线程）
+    Note right of Worker: provideGlance 前受 WorkManager 10min 预算；<br/>provideContent 后 composition 仅再活 ~45s
+    Worker->>WG: provideGlance(context, id)
+    WG->>LD: load(context)
+    LD->>DB: allWithPhotos().first()（withContext IO）
+    DB-->>LD: items
+    LD->>LD: yearsOf / current() / inYear / 降序 / take(MAX_ROWS=20)
+    LD-->>WG: AchievementWidgetSnapshot
+    WG->>WG: provideContent { AchievementContent(snapshot) }  → RemoteViews
+    Note right of WG: LazyColumn → ListView + RemoteCollectionItems<br/>SDK>31 一次性打包全部 item（故限 20 条、禁位图）
+    WG->>AWM: updateAppWidget(id, RemoteViews)
+    AWM-->>Host: 桌面立即重渲染（学年标签 + 统计 + 列表同步变化）
+    Note over Host: 若该 launcher 不支持集合视图滚动（T01 spike 判定失败）<br/>→ USE_LAZY_COLUMN = false，改静态 Column 分行 + 底部「查看全部」
+
+    Note over VM, AWM: ============ 场景 B：App 内保存记录后桌面实时更新（P0-6 / W1-W5） ============
+
+    VM->>VM: saveRecord(...) 内 viewModelScope.launch(Dispatchers.IO)
+    VM->>DB: insertRecord / updateRecord / deletePhotos / insertPhotos
+    Note right of VM: 🚩 W1 插入点：<br/>withContext(Main){ onSaved(failures) } 之前
+    VM->>WR: refresh(app)
+    WR->>GMM: getGlanceIds(...)
+    GMM-->>WR: 为空 → return（未添加组件时零开销）
+    WR->>WG: updateAll(app)
+    WG->>Worker: （同场景 A 尾部链路）provideGlance → load → RemoteViews → AWM
+    Worker->>DB: allWithPhotos().first()
+    DB-->>Worker: 最新数据
+    Worker->>AWM: updateAppWidget
+    AWM-->>Host: 桌面条数与列表同步更新
+
+    Note over VM, AWM: W2/W3/W4 删除路径同构：<br/>deleteRecord 在 finishDeletion() 之前；deleteSelected 在 exitSelectionMode() 之后；<br/>deleteYear 在 reportDeletion() 之后、finally 之前 —— 均调同一个 WidgetRefresh.refresh()
+
+    Note over VM, AWM: W5 App 内切学年（成果页 chip）：<br/>saveAchievementYear(year) 只入队 → init{} 单消费者 → AchievementYearWriter.writeAndRefresh()<br/>（严禁在 saveAchievementYear 里裸 launch(Dispatchers.IO)）
+
+    Note over MA, AWM: ============ W6 冷启兜底：覆盖 App 升级 / 设备重启两个空窗 ============
+
+    MA->>MA: onCreate()
+    MA->>WR: lifecycleScope.launch(IO){ refresh(app) }
+    Note right of MA: Glance 的 MyPackageReplacedReceiver 收到 MY_PACKAGE_REPLACED<br/>只做 cleanReceivers()，不做业务刷新 —— 故必须自己兜
+    WR->>WG: updateAll(app)（含 getGlanceIds 判空）
+    WG->>AWM: updateAppWidget
+    AWM-->>Host: 桌面回到最新数据
+
+    MA->>MA: publishIfChanged(app)  【API 35+ 才真正执行】
+    Note right of MA: 新版 fingerprint 存入新 SP 文件 jicun_achievement_widget_preview<br/>（严禁复用 jicun_achievement_widget）<br/>内容未变 或 距上次成功不足 31min → 跳过（官方限流约 2 次/小时）

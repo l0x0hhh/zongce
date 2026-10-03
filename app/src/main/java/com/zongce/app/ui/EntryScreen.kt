@@ -69,7 +69,7 @@ import java.time.ZoneId
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EntryScreen(
-    vm: AppViewModel,
+    vm: RecordViewModel,
     recordId: Long,
     onDone: () -> Unit
 ) {

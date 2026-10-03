@@ -1,0 +1,212 @@
+classDiagram
+    direction LR
+
+    %% ===================== 本次新增 =====================
+    class AchievementWidget {
+        <<GlanceAppWidget 新增>>
+        +WIDGET_MAX_ROWS Int = 20
+        +USE_LAZY_COLUMN Boolean = true
+        +sizeMode SizeMode = Responsive 250x180 / 250x250 / 320x250
+        +previewSizeMode PreviewSizeMode = Responsive 同上三档
+        +stateDefinition GlanceStateDefinition = null 不启用
+        +provideGlance(context Context, id GlanceId)
+        +providePreview(context Context, widgetCategory Int)
+        +onCompositionError(context, glanceId, appWidgetId, throwable)
+        -AchievementContent(snapshot)
+        -YearSwitchRow(years, year)
+        -SummaryRow(count, covered)
+        -RecordColumn(rows, hasMore)
+        -EmptyState(year)
+    }
+
+    class AchievementWidgetReceiver {
+        <<GlanceAppWidgetReceiver 新增>>
+        +glanceAppWidget GlanceAppWidget = AchievementWidget
+    }
+
+    class AchievementWidgetLoader {
+        <<object 新增>>
+        +load(context Context) AchievementWidgetSnapshot
+        -toRow(item RecordWithPhotos) AchievementWidgetRow
+    }
+
+    class AchievementWidgetSnapshot {
+        <<data 新增>>
+        +years List~String~
+        +year String
+        +recordCount Int
+        +coveredWuyu Int
+        +rows List~AchievementWidgetRow~
+        +hasMore Boolean
+        +FALLBACK AchievementWidgetSnapshot
+    }
+
+    class AchievementWidgetRow {
+        <<data 新增>>
+        +id Long
+        +name String
+        +subline String
+        +wuyuColorArgb Int
+    }
+
+    class WidgetPalette {
+        <<object 新增>>
+        +CardWhite Color
+        +Ink Color
+        +Primary Color
+        +PrimaryContainer Color
+        +SecondaryText Color
+        +Disabled Color
+        +Divider Color
+        +wuyuDot(wuyu String) Color
+    }
+
+    class SwitchYearAction {
+        <<ActionCallback 新增>>
+        +onAction(context, glanceId, parameters)
+        -YearDeltaKey ActionParametersKey
+    }
+
+    class WidgetRefresh {
+        <<object 新增>>
+        +refresh(context Context)
+        -TAG String
+    }
+
+    class WidgetPreviewPublisher {
+        <<object 新增>>
+        +publishIfChanged(context Context)
+        -fingerprint(snapshot) String
+        -PREFS String = jicun_achievement_widget_preview
+        -MIN_INTERVAL_MS Long = 31min
+    }
+
+    class AchievementYearWriter {
+        <<object 新增>>
+        +writeAndRefresh(context Context, year String)
+        -requests Channel of Write UNLIMITED
+        -consumerLoop() 单消费者严格按入队顺序
+    }
+
+    %% ===================== 既有代码（本次少量修改） =====================
+    class AchievementYearStore {
+        <<object 既有>>
+        +current(context Context, years List~String~) String
+        +set(context Context, year String)
+        -PREFS String = jicun_achievement_widget
+        -KEY String = selected_year
+    }
+
+    class AcademicYear {
+        <<object 既有>>
+        +LABEL String
+        +belongsTo(dateText, label) Boolean
+        +inYear(items, year, dateOf) List
+        +yearsOf(dateTexts) List~String~
+    }
+
+    class AppDatabase {
+        <<既有>>
+        +get(context Context) AppDatabase
+        +awardDao() AwardDao
+    }
+
+    class AwardDao {
+        <<interface 既有>>
+        +allWithPhotos() Flow_of_RecordWithPhotos
+    }
+
+    class RecordWithPhotos {
+        <<data 既有>>
+        +record AwardRecord
+        +photos List~AwardPhoto~
+    }
+
+    class AwardRecord {
+        <<entity 既有>>
+        +id Long
+        +wuyu String
+        +awardName String
+        +awardDate String
+        +grade String
+    }
+
+    class RecordViewModel {
+        <<既有 修改点 W1-W5>>
+        +saveRecord(record, newUris, removedIds, onSaved)
+        +deleteRecord(item)
+        +deleteSelected(ids)
+        +deleteYear(year)
+        +saveAchievementYear(year)
+        -achievementYearRequests Channel 单消费者队列
+    }
+
+    class MainActivity {
+        <<既有 修改点>>
+        +onCreate(savedInstanceState)
+    }
+
+    class WuyuPalette {
+        <<既有 ui.Theme>>
+        +of(wuyu String) Color
+    }
+
+    %% ===================== 外部 / 框架 =====================
+    class GlanceAppWidgetManager {
+        <<androidx.glance>>
+        +getGlanceIds(provider Class) List~GlanceId~
+        +setWidgetPreviews(receiver KClass, categories IntSet) Int
+    }
+
+    class AppWidgetSessionWorker {
+        <<androidx.work 背景线程>>
+        +provideGlance前10min预算
+        +provideContent后composition活约45s
+    }
+
+    class ActionCallbackBroadcastReceiver {
+        <<androidx.glance>>
+        +onReceive(context, intent) goAsync_on_Dispatchers_Default
+    }
+
+    %% ===================== 关系 =====================
+    AchievementWidgetReceiver --> AchievementWidget : 持有实例
+    AchievementWidget ..> AchievementWidgetLoader : 装载快照
+    AchievementWidget ..> WidgetPalette : 写死色值
+    AchievementWidget ..> GlanceAppWidgetManager : providePreview 由 setWidgetPreviews 触发
+    AchievementWidget ..> AppWidgetSessionWorker : update 与 updateAll 起的后台 Worker
+
+    AchievementWidgetLoader ..> AppDatabase : 一次快照读
+    AchievementWidgetLoader --> AchievementWidgetSnapshot : 产出
+    AchievementWidgetSnapshot o-- AchievementWidgetRow : 包含 0 到 N 条
+    AchievementWidgetLoader ..> AwardDao : allWithPhotos first
+    AchievementWidgetLoader ..> AcademicYear : yearsOf 与 inYear
+    AchievementWidgetLoader ..> AchievementYearStore : current(context, years)
+
+    SwitchYearAction ..> AchievementYearWriter : 组件箭头写入
+    AchievementYearWriter ..> AchievementYearStore : set 同步 commit
+    AchievementYearWriter ..> WidgetRefresh : 写后立即推送
+
+    WidgetRefresh ..> GlanceAppWidgetManager : getGlanceIds 判空早退
+    WidgetRefresh ..> AchievementWidget : updateAll
+
+    WidgetPreviewPublisher ..> GlanceAppWidgetManager : setWidgetPreviews 仅 API35+
+    WidgetPreviewPublisher ..> AchievementWidgetLoader : 计算 fingerprint
+
+    RecordViewModel ..> AchievementYearWriter : W5 队列消费者内调用
+    RecordViewModel ..> WidgetRefresh : W1-W4 写路径挂载
+    RecordViewModel ..> AwardDao : 增删改
+    MainActivity ..> WidgetRefresh : W6 冷启兜底
+    MainActivity ..> WidgetPreviewPublisher : publishIfChanged
+
+    AppDatabase --> AwardDao : 提供
+    AwardDao ..> RecordWithPhotos : 返回
+    RecordWithPhotos *-- AwardRecord : Embedded
+    WidgetPalette ..> WuyuPalette : 色值逐字对齐浅色版
+    ActionCallbackBroadcastReceiver ..> SwitchYearAction : 反射实例化并调 onAction
+
+    note for AchievementYearWriter "组件箭头与成果页 chip 是两个独立写入源，必须共用一个串行队列，否则重演 v1.3.6 顺序错乱"
+    note for AchievementWidget "providePreview 无 GlanceId 只读快照；previewSizeMode 必须 Responsive，否则 API35+ 预览会裁掉列表"
+    note for SwitchYearAction "ActionCallback 结束后 Glance 不会自动刷新，末尾必须显式 update(context, glanceId)"
+    note for WidgetRefresh "全仓唯一允许出现 updateAll 与 GlanceAppWidgetManager 的地方"
+    note for WidgetPreviewPublisher "限流约每小时 2 次：fingerprint 判重 + 最小间隔 31 分钟"

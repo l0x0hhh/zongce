@@ -1,4 +1,6 @@
 // 应用导航、页面过渡、品牌主题和更新入口。
+// 三个 ViewModel（Record / Export / Update）在这里作为组合根接线，
+// 跨域的协作（如导出分享 → 删除询问闸门）只发生在这一层。
 package com.zongce.app
 
 import android.content.Intent
@@ -38,14 +40,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.zongce.app.ui.AchievementScreen
-import com.zongce.app.ui.AppViewModel
 import com.zongce.app.ui.CaptureScreen
 import com.zongce.app.ui.EntryScreen
 import com.zongce.app.ui.ExportScreen
+import com.zongce.app.ui.ExportViewModel
 import com.zongce.app.ui.JicunGlassNavigationBar
 import com.zongce.app.ui.JicunTheme
 import com.zongce.app.ui.ListScreen
+import com.zongce.app.ui.RecordViewModel
 import com.zongce.app.ui.UpdateDialog
+import com.zongce.app.ui.UpdateViewModel
 import com.zongce.app.ui.YearDeleteDialog
 import com.zongce.app.ui.defaultAppTabs
 import com.zongce.app.update.UpdateChecker
@@ -90,13 +94,15 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun App(
-    vm: AppViewModel = viewModel(),
+    recordVm: RecordViewModel = viewModel(),
+    exportVm: ExportViewModel = viewModel(),
+    updateVm: UpdateViewModel = viewModel(),
     widgetAction: String? = null,
     onWidgetActionConsumed: () -> Unit = {}
 ) {
     val nav = rememberNavController()
-    val items by vm.items.collectAsState()
-    val updateState by vm.updateState.collectAsState()
+    val items by recordVm.items.collectAsState()
+    val updateState by updateVm.updateState.collectAsState()
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val context = LocalContext.current
@@ -124,13 +130,13 @@ private fun App(
 
     // 启动即静默检查一次更新（每天最多一次；无新版或失败都不打扰用户）。
     // 用 Unit 作 key，保证整个 App 组合期间只触发一次，不会随重组反复发请求。
-    androidx.compose.runtime.LaunchedEffect(Unit) { vm.autoCheckForUpdate() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { updateVm.autoCheckForUpdate() }
 
     // 删除结果的 Toast。用 Toast 而不是 SnackBar：本页的 Scaffold 没有 snackbarHost，
     // 为一条提示去加一个要和 NavHost padding、玻璃导航栏叠放的 host 不划算，
     // 而删除反馈本就是"不阻塞操作"的告知。
     LaunchedEffect(Unit) {
-        vm.deleteMessages.collect { message ->
+        recordVm.deleteMessages.collect { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
@@ -141,14 +147,14 @@ private fun App(
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.onReturnedFromShare()
+            if (event == Lifecycle.Event.ON_RESUME) recordVm.onReturnedFromShare()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val yearDeletePrompt by vm.yearDeletePrompt.collectAsState()
-    val deleting by vm.deleting.collectAsState()
+    val yearDeletePrompt by recordVm.yearDeletePrompt.collectAsState()
+    val deleting by recordVm.deleting.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -172,13 +178,13 @@ private fun App(
                 exitTransition = { fadeOut(tween(120)) }
             ) {
                 CaptureScreen(
-                    vm = vm,
+                    vm = recordVm,
                     recordCount = items.size,
                     widgetAction = widgetAction,
                     onWidgetActionConsumed = onWidgetActionConsumed,
                     onGoEntry = { nav.navigate("entry/0") },
                     onGoAchievement = { selectTab(ROUTE_ACHIEVEMENT) },
-                    onCheckUpdate = vm::checkForUpdate
+                    onCheckUpdate = updateVm::checkForUpdate
                 )
             }
             composable(
@@ -188,10 +194,10 @@ private fun App(
             ) {
                 AchievementScreen(
                     items = items,
-                    vm = vm,
+                    vm = recordVm,
                     onOpenRecord = { id -> nav.navigate("entry/$id") },
                     onAddRecord = {
-                        vm.clearPending()
+                        recordVm.clearPending()
                         nav.navigate("entry/0")
                     }
                 )
@@ -203,28 +209,37 @@ private fun App(
                 exitTransition = { fadeOut(tween(120)) }
             ) { backStackEntry ->
                 val id = backStackEntry.arguments?.getLong("recordId") ?: 0L
-                EntryScreen(vm = vm, recordId = id) { nav.popBackStack() }
+                EntryScreen(vm = recordVm, recordId = id) { nav.popBackStack() }
             }
             composable(
                 route = ROUTE_LIST,
                 enterTransition = { fadeIn(tween(180)) },
                 exitTransition = { fadeOut(tween(120)) }
             ) {
-                ListScreen(items = items, vm = vm) { id -> nav.navigate("entry/$id") }
+                ListScreen(items = items, vm = recordVm) { id -> nav.navigate("entry/$id") }
             }
             composable(
                 route = ROUTE_EXPORT,
                 enterTransition = { fadeIn(tween(180)) },
                 exitTransition = { fadeOut(tween(120)) }
             ) {
-                ExportScreen(vm = vm, items = items)
+                ExportScreen(
+                    vm = exportVm,
+                    items = items,
+                    onShareYear = recordVm::markShared,
+                    onShareReturned = recordVm::onReturnedFromShare,
+                    onResetExport = {
+                        exportVm.resetExport()
+                        recordVm.resetYearDeletePrompt()
+                    }
+                )
             }
         }
     }
 
     UpdateDialog(
         state = updateState,
-        onDownload = vm::downloadUpdate,
+        onDownload = updateVm::downloadUpdate,
         onInstall = { file ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 !context.packageManager.canRequestPackageInstalls()
@@ -246,8 +261,8 @@ private fun App(
                 context.startActivity(intent)
             }
         },
-        onDismiss = vm::resetUpdate,
-        onRetry = vm::checkForUpdate
+        onDismiss = updateVm::resetUpdate,
+        onRetry = updateVm::checkForUpdate
     )
 
     // 学年删除询问与更新弹窗同级：从分享面板回来时用户可能停在任何一个 tab，
@@ -255,7 +270,7 @@ private fun App(
     YearDeleteDialog(
         prompt = yearDeletePrompt,
         deleting = deleting,
-        onConfirm = vm::confirmYearDelete,
-        onDismiss = vm::dismissYearDelete
+        onConfirm = recordVm::confirmYearDelete,
+        onDismiss = recordVm::dismissYearDelete
     )
 }

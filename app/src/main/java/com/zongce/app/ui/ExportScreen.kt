@@ -49,16 +49,24 @@ import com.zongce.app.data.RecordWithPhotos
 import com.zongce.app.export.ExportCheck
 
 @Composable
-fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
+fun ExportScreen(
+    vm: ExportViewModel,
+    items: List<RecordWithPhotos>,
+    onShareYear: (String) -> Unit,
+    onShareReturned: () -> Unit,
+    onResetExport: () -> Unit
+) {
     val context = LocalContext.current
     val state by vm.exportState.collectAsState()
 
     // 分享面板要能"回来时通知 App"：用户在面板里发完（或取消）回到暨存，就是询问
     // 「要不要删掉这一学年」的时机。裸 startActivity 拿不到这个时刻，必须用 launcher。
     // RESULT_OK / RESULT_CANCELED 一律当成"回来了" —— 取消分享也算回来了，照样问。
+    // 消费动作（YearDeletePromptGate）属于删除域（RecordViewModel），由 MainActivity
+    // 以 onShareReturned 回调接进来 —— 导出页不知道删除域的存在。
     val shareLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { vm.onReturnedFromShare() }
+    ) { onShareReturned() }
     // 学年列表只由 AcademicYear.yearsOf 生成，不再在 UI 里复刻一遍（保证与组件/成果页同源）。
     val availableYears = remember(items) {
         AcademicYear.yearsOf(items.map { it.record.awardDate })
@@ -145,7 +153,7 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                 BlockedList(current.issues)
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(
-                    onClick = { vm.resetExport() },
+                    onClick = { onResetExport() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.Refresh, contentDescription = null)
@@ -172,7 +180,7 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = { vm.resetExport() },
+                    onClick = { onResetExport() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     androidx.compose.material3.Icon(Icons.Default.Refresh, contentDescription = null)
@@ -287,7 +295,7 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                         // targetYear 从状态里取，不用 UI 局部的 targetYear：
                         // 那一个会被 LaunchedEffect(availableYears) 的回落改掉，
                         // 于是弹窗问的学年和实际导出的学年不是同一个。
-                        vm.markShared(current.targetYear)
+                        onShareYear(current.targetYear)
                         shareLauncher.launch(Intent.createChooser(intent, "发送材料包到…"))
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -298,7 +306,7 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = { vm.resetExport() },
+                    onClick = { onResetExport() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("导出其他学年") }
             }
@@ -326,7 +334,7 @@ fun ExportScreen(vm: AppViewModel, items: List<RecordWithPhotos>) {
                 }
                 Spacer(Modifier.height(12.dp))
                 OutlinedButton(
-                    onClick = { vm.resetExport() },
+                    onClick = { onResetExport() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("重新开始") }
             }

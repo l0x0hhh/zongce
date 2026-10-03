@@ -57,7 +57,7 @@ import java.io.File
 
 @Composable
 fun CaptureScreen(
-    vm: AppViewModel,
+    vm: RecordViewModel,
     recordCount: Int,
     widgetAction: String? = null,
     onWidgetActionConsumed: () -> Unit = {},

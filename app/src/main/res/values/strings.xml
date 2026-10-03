@@ -9,4 +9,19 @@
     <string name="widget_description">把拍证书、选照片的入口放在桌面，点一下直接进录入页</string>
     <string name="widget_capture">拍照</string>
     <string name="widget_pick_photos">相册</string>
+
+    <!--
+        桌面小组件之二（我的成果）：label 出现在桌面组件选择器里，description 是系统说明文案。
+        其余是组件内文案 —— 组件里不放 private const 中文常量，一律走 string 资源。
+    -->
+    <string name="achievement_widget_label">暨存 · 我的成果</string>
+    <string name="achievement_widget_description">在桌面查看这一学年攒下的成果，可切换学年、滑动查看更多</string>
+    <string name="achievement_widget_stat_count">条成果</string>
+    <string name="achievement_widget_stat_cover_prefix">覆盖</string>
+    <string name="achievement_widget_stat_cover_suffix">育</string>
+    <string name="achievement_widget_more">共 %1$d 条 · 查看全部</string>
+    <string name="achievement_widget_empty_title">%1$s 学年还没有记录</string>
+    <string name="achievement_widget_empty_hint">拍下证书，它就会出现在这里</string>
+    <string name="achievement_widget_unnamed">未填写获奖名称</string>
+    <string name="achievement_widget_undated">未填写时间</string>
 </resources>

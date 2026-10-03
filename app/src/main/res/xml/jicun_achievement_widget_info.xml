@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  桌面小组件之二（我的成果）的系统登记信息。
+
+  规格：4×4 格（250×250dp），最小可缩到 4×3（250×180dp），横向/纵向均可拉伸。
+  为什么不能沿用快速录入的 3×2（180×110dp）：110dp 扣掉 padding 与标题行后剩给列表不到
+  50dp，只剩一条记录，"滑动查看更多"在物理上不成立。4×4 是主流桌面组件的可读下限：
+  列表可视区约 146dp ≈ 3 行完整 + 第 4 行露头，正好让"还能往下滑"看得见。
+
+  updatePeriodMillis=0 —— 不轮询。系统 javadoc 原文：更新不会比每 30 分钟一次更频繁，
+  轮询做不了"实时"；内容变化一律由 App 侧主动推送（见 widget/WidgetRefresh.kt）。
+
+  initialLayout 指向 Glance 自带的占位布局：真实内容由 AchievementWidget 渲染进去，
+  首帧先出这个占位（T01 实测：模拟器冷启动首绑出现过一次 ANR，占位布局能挡住空窗）。
+
+  previewLayout / previewImage 由 T04 挂上（三档预览的 L1/L2），本文件届时只补这两个属性。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:description="@string/achievement_widget_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minHeight="180dp"
+    android:minWidth="250dp"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="4"
+    android:targetCellWidth="4"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    tools:ignore="UnusedAttribute" />

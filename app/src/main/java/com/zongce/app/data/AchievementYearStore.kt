@@ -31,7 +31,7 @@ object AchievementYearStore {
         return if (saved != null && saved in years) saved else AcademicYear.LABEL
     }
 
-    /** 写入学年。调用方（AppViewModel 的单消费者队列）保证串行，这里只负责同步落盘。 */
+    /** 写入学年。调用方（RecordViewModel 的单消费者队列）保证串行，这里只负责同步落盘。 */
     fun set(context: Context, year: String) {
         prefs(context).edit().putString(KEY, year).commit()
     }

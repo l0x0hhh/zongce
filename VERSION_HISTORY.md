@@ -46,6 +46,13 @@
 | 2 | `LocalLifecycleOwner`（`androidx.compose.ui.platform`）已 deprecated，替代实现在 `lifecycle-runtime-compose` | 引它等于新增依赖，而 `docs/design/system_design.md` §6 明确「不新增任何第三方依赖」；目前只是编译告警，行为正常 |
 | 3 | 删除链路与组件移除的真机验证 | 本机无签名口令，构建不了可安装验证包；发布后按上文「必须真机验证」六条清单回归 |
 
+## v1.5.0 更新（成果桌面小组件）
+
+- 新增成果桌面小组件：按学年展示成果数量、五育覆盖统计和成果摘要，点击可进入成果页面。
+- 新增组件 Receiver、Loader、Glance UI、布局规格和配色资源，并在 Manifest 注册。
+- 将主界面状态拆分为 `RecordViewModel`、`ExportViewModel`、`UpdateViewModel`。
+- 本地验证：`testDebugUnitTest` 89 个测试全部通过；`assembleDebug` 构建成功。
+
 ## v1.3.6 更新（历史）
 
 ### 成果小组件：修「在 App 内选完学年，回桌面组件不刷新」

@@ -48,6 +48,25 @@
                 android:resource="@xml/jicun_widget_info" />
         </receiver>
 
+        <!--
+            桌面小组件之二：我的成果（只读成果列表 + 学年切换 + 滑动查看）。
+            与上面「快速录入」组件并列、各自一个 receiver，互不干扰。
+            组件只读 Room（不写 award_records / award_photos），学年读写经
+            data/AchievementYearStore 唯一事实源。靠 action 进 MainActivity
+            成果页，零新增路由。
+        -->
+        <receiver
+            android:name=".widget.AchievementWidgetReceiver"
+            android:exported="false"
+            android:label="@string/achievement_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/jicun_achievement_widget_info" />
+        </receiver>
+
         <!-- 拍照临时文件 & 导出 ZIP 分享 -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -50,7 +50,7 @@ import java.io.File
 @Composable
 fun ListScreen(
     items: List<RecordWithPhotos>,
-    vm: AppViewModel,
+    vm: RecordViewModel,
     onEdit: (Long) -> Unit
 ) {
     var filter by remember { mutableStateOf("全部") }

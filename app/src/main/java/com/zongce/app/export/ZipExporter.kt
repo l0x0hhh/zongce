@@ -91,7 +91,7 @@ object ZipExporter {
     }
 
     /**
-     * Android 适配器：公开签名不变，AppViewModel 调用方一行不改。
+     * Android 适配器：公开签名不变，ExportViewModel 调用方一行不改。
      * [targetYear] 必填：导出档位不能有默认值，否则会随"今天"静默滑动。
      */
     fun export(

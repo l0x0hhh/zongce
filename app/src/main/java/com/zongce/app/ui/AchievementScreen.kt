@@ -2,7 +2,7 @@
 // 学年是学校综测的唯一时间口径，所以它是这一页的主轴 —— 用户来这里的问句
 // 永远是"我这一学年攒下了什么"，而不是"我全部有多少条"。
 //
-// 多选删除（v1.4.0）：选择态与选择集都在 AppViewModel 里，本页只负责渲染与转发点击。
+// 多选删除（v1.4.0）：选择态与选择集都在 RecordViewModel 里，本页只负责渲染与转发点击。
 // 页面没有自己的 topBar / bottomBar（Scaffold 与 NavHost 在 MainActivity），
 // 所以「选择」按钮进标题行、底部操作条用 Box 覆盖层 —— 不要给本页加 Scaffold，
 // 那会和 MainActivity 的 NavHost padding 打架（双份 contentPadding）。
@@ -61,7 +61,7 @@ private val SELECTION_BAR_SPACE = 88.dp
 @Composable
 fun AchievementScreen(
     items: List<RecordWithPhotos>,
-    vm: AppViewModel,
+    vm: RecordViewModel,
     onOpenRecord: (Long) -> Unit,
     onAddRecord: () -> Unit
 ) {

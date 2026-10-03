@@ -21,14 +21,22 @@ MainActivity
 JicunWidgetReceiver（系统广播）
     └── JicunWidget             Glance 组件界面：发 Intent 给 MainActivity，不碰数据库
 
-AppViewModel
+RecordViewModel（记录域：记录流 / 照片 / 多选 / 删除 / 学年偏好 / 删除询问闸门）
     ├── AwardDao               读写 Room 数据库
     ├── PhotoStore             管理本地证明照片
     ├── RecordDeletion         删除的唯一入口（先删库 → 重查引用 → 只删 0 引用文件）
     ├── AchievementYearStore   成果页学年偏好（SharedPreferences）
+    └── YearDeletePromptGate   导出后「是否删除这一学年」的闸门
+
+ExportViewModel（导出域：体检 → 确认 → 打包 → 完成/失败）
     ├── ExportCheck            导出前校验
-    ├── ZipExporter            生成 ZIP 材料包
+    └── ZipExporter            生成 ZIP 材料包
+
+UpdateViewModel（更新域：检查 / 下载 / 节流 / 手动·静默并发保护）
     └── UpdateChecker          读取更新清单并下载 APK
+
+三个 ViewModel 在 MainActivity 作为组合根接线；跨域协作（分享 → 删除询问、
+重置导出 → 重置删除闸门）只发生在 MainActivity 的组合处。
 ```
 
 ## 入口与导航
@@ -88,7 +96,7 @@ AppViewModel
 
 导出流程的主要顺序是：运行 `ExportCheck` → 有阻断项则先修；只有提醒项则过确认页 → 用 `ExportCheck.targetItems()` 取本次范围 → `ZipExporter` → 生成并分享 ZIP。
 
-`ExportCheck.run()`、`ZipExporter.export()`、`AppViewModel.checkBeforeExport()` 的 `targetYear` 都是必填参数：这类"档位"参数一旦带默认值就会随系统日期静默滑动，调用方（尤其是测试）会在不自知的情况下换一个学年。
+`ExportCheck.run()`、`ZipExporter.export()`、`ExportViewModel.checkBeforeExport()` 的 `targetYear` 都是必填参数：这类"档位"参数一旦带默认值就会随系统日期静默滑动，调用方（尤其是测试）会在不自知的情况下换一个学年。
 
 ## 更新层
 
@@ -102,7 +110,9 @@ AppViewModel
 
 | 文件 | 职责 |
 | --- | --- |
-| `ui/AppViewModel.kt` | 记录流、照片导入、保存/删除、多选态与删除执行、导出状态（Idle / Blocked / Confirm / Exporting / Done / Error）、导出后删除的 pending 状态机、更新状态和业务编排 |
+| `ui/RecordViewModel.kt` | 记录域编排：记录流、照片导入、保存/删除、多选态与删除执行、学年偏好、导出后删除的 pending 状态机与闸门。同文件定义 `YearDeletePrompt` / `ImportFailure` 类型 |
+| `ui/ExportViewModel.kt` | 导出域编排：导出状态机（Idle / Blocked / Confirm / Exporting / Done / Error）。同文件定义 `ExportState` 类型；只依赖 ExportCheck / ZipExporter，不摸删除域 |
+| `ui/UpdateViewModel.kt` | 更新域编排：检查、下载、节流与手动/静默并发保护（epoch）。`UpdateUiState` 定义在 `UpdateDialog.kt`（UI 状态跟随弹窗） |
 | `ui/CaptureScreen.kt` | 相机拍摄、系统图片选择和最近记录展示 |
 | `ui/EntryScreen.kt` | 新增、编辑获奖记录和表单校验 |
 | `ui/ListScreen.kt` | 记录列表、五育筛选、预览和删除入口 |
@@ -114,7 +124,7 @@ AppViewModel
 | `ui/Theme.kt` | 颜色、字体与圆角等视觉主题定义 |
 | `ui/UiKit.kt` | 公共 Compose 控件和照片缩略图 |
 
-页面显示问题优先查对应 Screen；跨页面的数据、状态或导出流程问题优先查 `AppViewModel`；整体视觉调整优先查 `Theme.kt` 与 `GlassNavigationBar.kt`。
+页面显示问题优先查对应 Screen；记录/删除问题优先查 `RecordViewModel`，导出流程问题优先查 `ExportViewModel`，更新问题优先查 `UpdateViewModel`；跨域接线（分享 → 删除询问、重置导出 → 重置删除闸门）在 `MainActivity`；整体视觉调整优先查 `Theme.kt` 与 `GlassNavigationBar.kt`。
 
 ## 测试位置
 
@@ -157,11 +167,11 @@ AppViewModel
 
 ## 常见修改定位
 
-- 修改获奖记录字段：`AwardRecord.kt` → `AwardDao.kt` → `AppViewModel.kt` → `EntryScreen.kt` / `ListScreen.kt`。
-- 修改拍照或导入照片：`CaptureScreen.kt` → `AppViewModel.kt` → `PhotoStore.kt`。
+- 修改获奖记录字段：`AwardRecord.kt` → `AwardDao.kt` → `RecordViewModel.kt` → `EntryScreen.kt` / `ListScreen.kt`。
+- 修改拍照或导入照片：`CaptureScreen.kt` → `RecordViewModel.kt` → `PhotoStore.kt`。
 - 修改学年判断：`AcademicYear.kt` → `AcademicYearTest.kt` → `ExportCheck.kt`。
-- 修改导出目录、文件名或 ZIP 内容：`FileNameRule.kt` / `ZipExporter.kt` → `ExportCheck.kt` → `ExportScreen.kt`。
-- 修改更新逻辑或安装流程：`UpdateChecker.kt` → `AppViewModel.kt` → `UpdateDialog.kt`。
+- 修改导出目录、文件名或 ZIP 内容：`FileNameRule.kt` / `ZipExporter.kt` → `ExportCheck.kt` → `ExportViewModel.kt` → `ExportScreen.kt`。
+- 修改更新逻辑或安装流程：`UpdateChecker.kt` → `UpdateViewModel.kt` → `UpdateDialog.kt`。
 - 修改桌面小组件：`widget/JicunWidget.kt` / `res/xml/jicun_widget_info.xml`（外观与尺寸）→ `MainActivity.kt` / `CaptureScreen.kt`（点击后的行为）→ `docs/adr/0001-widget-entry-routing.md`。
 - 修改页面路由或外部入口：`MainActivity.kt`。
 - 修改通用 UI 控件或主题：`UiKit.kt` / `Theme.kt` / `GlassNavigationBar.kt`。
