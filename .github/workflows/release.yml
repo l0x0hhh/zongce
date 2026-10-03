@@ -1,11 +1,6 @@
 # Version tags build a signed APK and publish a GitHub Release.
 #
-# 如果配了国内镜像（Gitee），还会同步一份：APK 作为 Gitee Release 附件，
-# latest.json 提交到镜像仓库主分支供 raw 直链读取（应用内的更新检查会读它）。
-# 需要 3 个仓库配置，缺任何一个都会自动跳过镜像、只发 GitHub：
-#   Secret    GITEE_TOKEN   —— Gitee 私人令牌，勾 projects（仓库读写）权限
-#   Variable  GITEE_OWNER   —— Gitee 用户名，例如 l0x0hhh
-#   Variable  GITEE_REPO    —— Gitee 镜像仓库名，例如 Jicun
+# 国内下载源改由 Netlify 产品页托管 APK 和 latest.json，Gitee 附件上传暂不参与发布。
 #
 # 另外可选：把 APK 同步到宣传页仓库（落地页自己托管安装包，下载才能保证是 .apk，
 # 而不是被第三方图床标成 application/zip 后、被安卓浏览器存成 .zip）。缺配置同样跳过：
@@ -58,7 +53,8 @@ jobs:
       # 解析镜像分支并算出清单地址，写进 $GITHUB_ENV 给后面的步骤用。
       # 这里的任何问题都只警告、不失败：镜像不该拦住正式的 GitHub 发布。
       - name: Resolve mirror settings
-        if: env.GITEE_TOKEN != '' && env.GITEE_OWNER != '' && env.GITEE_REPO != ''
+        # Gitee 附件上传在 GitHub Runner 上不稳定；Netlify 已承担国内镜像职责。
+        if: ${{ false }}
         run: |
           set -uo pipefail
           API="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}"
@@ -93,14 +89,14 @@ jobs:
       - name: Run tests
         run: ./gradlew test --no-daemon
 
-      # 清单地址要编译进 APK（BuildConfig.UPDATE_MANIFEST_URL），所以必须在这一步就确定。
-      # 没配镜像时它是空串，应用会走 GitHub Release 回退。
+      # 清单地址要编译进 APK（BuildConfig.UPDATE_MANIFEST_URL）。
+      # Netlify 托管 APK 和 latest.json，GitHub Release 作为备用更新源。
       - name: Assemble signed release APK
         run: |
           ./gradlew :app:assembleRelease --no-daemon \
             -PversionName="${RELEASE_VERSION#v}" \
             -PreleaseVersionCode="$((1000000 + GITHUB_RUN_NUMBER))" \
-            -PupdateManifestUrl="${MIRROR_MANIFEST_URL:-}"
+            -PupdateManifestUrl="https://jicun.netlify.app/downloads/latest.json"
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk "jicun-${RELEASE_VERSION#v}.apk"
 
@@ -114,9 +110,9 @@ jobs:
           name: 暨存 ${{ env.RELEASE_VERSION }}
           body: |
             本次更新：
-            - 修复新增、编辑、删除成果后“我的成果”桌面组件不主动刷新的问题。
-            - 为“我的成果”组件增加系统选择器预览，添加组件时显示真实样式而非应用 logo。
+            - App 更新检查改用 Netlify 国内镜像清单，GitHub Release 保留为备用源。
             - 更新弹窗展示完整功能说明，长内容可滚动查看。
+            - 修复成果组件刷新和系统选择器预览问题。
           files: jicun-*.apk
 
       # ---------- 国内镜像（Gitee）----------
