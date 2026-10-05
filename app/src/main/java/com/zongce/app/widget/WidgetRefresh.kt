@@ -3,6 +3,7 @@ package com.zongce.app.widget
 
 import android.content.Context
 import android.util.Log
+import androidx.glance.GlanceId
 import androidx.glance.appwidget.updateAll
 
 object WidgetRefresh {
@@ -13,6 +14,15 @@ object WidgetRefresh {
             Log.d("WidgetRefresh", "成果组件刷新请求已提交")
         }.onFailure { error ->
             Log.e("WidgetRefresh", "刷新成果组件失败", error)
+        }
+    }
+
+    suspend fun refresh(context: Context, glanceId: GlanceId) {
+        runCatching {
+            Log.d("WidgetRefresh", "刷新成果组件实例: $glanceId")
+            AchievementWidget().update(context.applicationContext, glanceId)
+        }.onFailure { error ->
+            Log.e("WidgetRefresh", "刷新成果组件实例失败", error)
         }
     }
 }

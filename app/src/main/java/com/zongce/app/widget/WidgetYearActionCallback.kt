@@ -11,6 +11,8 @@ import com.zongce.app.data.WidgetYearStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class WidgetYearActionCallback : ActionCallback {
     override suspend fun onAction(
@@ -19,16 +21,20 @@ class WidgetYearActionCallback : ActionCallback {
         parameters: ActionParameters
     ) {
         val delta = parameters[DELTA_KEY] ?: return
-        withContext(Dispatchers.IO) {
-            val app = context.applicationContext
-            val items = AppDatabase.get(app).awardDao().allWithPhotos().first()
-            val years = AcademicYear.yearsOf(items.map { it.record.awardDate })
-            WidgetYearStore.move(app, years, delta)
-            WidgetRefresh.refresh(app)
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                val app = context.applicationContext
+                val items = AppDatabase.get(app).awardDao().allWithPhotos().first()
+                val years = AcademicYear.yearsOf(items.map { it.record.awardDate })
+                WidgetYearStore.move(app, years, delta)
+                // 只更新被点击的实例，避免 updateAll() 让多个组件实例排队重绘。
+                WidgetRefresh.refresh(app, glanceId)
+            }
         }
     }
 
     companion object {
         val DELTA_KEY = ActionParameters.Key<Int>("widget_year_delta")
+        private val mutex = Mutex()
     }
 }

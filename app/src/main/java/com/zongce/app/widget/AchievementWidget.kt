@@ -157,9 +157,9 @@ private fun AchievementWidgetContent(snapshot: AchievementWidgetSnapshot) {
         if (snapshot.rows.isEmpty()) {
             EmptyBody(context = context, snapshot = snapshot, onClick = openAchievement)
         } else if (AchievementWidget.USE_LAZY_COLUMN) {
-            LazyListBody(snapshot = snapshot)
+            LazyListBody(snapshot = snapshot, context = context)
         } else {
-            StaticListBody(snapshot = snapshot)
+            StaticListBody(snapshot = snapshot, context = context)
         }
 
         Spacer(GlanceModifier.height(4.dp))
@@ -305,13 +305,13 @@ private fun BigNumber(text: String) {
 
 /** L1 默认形态：Glance LazyColumn，最多 WIDGET_MAX_ROWS 条，itemId 用 record.id。 */
 @Composable
-private fun LazyListBody(snapshot: AchievementWidgetSnapshot) {
+private fun LazyListBody(snapshot: AchievementWidgetSnapshot, context: Context) {
     LazyColumn(modifier = GlanceModifier.fillMaxWidth()) {
         items(
             items = snapshot.rows,
             itemId = { it.id }
         ) { row ->
-            RecordRow(row = row)
+            RecordRow(row = row, onClick = openRecordAction(context, row.id))
         }
     }
 }
@@ -321,7 +321,7 @@ private fun LazyListBody(snapshot: AchievementWidgetSnapshot) {
  * 只有 USE_LAZY_COLUMN 被翻成 false 时才走到这里。
  */
 @Composable
-private fun StaticListBody(snapshot: AchievementWidgetSnapshot) {
+private fun StaticListBody(snapshot: AchievementWidgetSnapshot, context: Context) {
     val listH = LocalSize.current.height.value -
         AchievementWidget.CHROME_HEIGHT_DP
     val rows = floor(listH / AchievementWidget.ROW_HEIGHT_DP)
@@ -330,7 +330,7 @@ private fun StaticListBody(snapshot: AchievementWidgetSnapshot) {
         .coerceAtMost(AchievementWidget.WIDGET_MAX_ROWS)
     Column(modifier = GlanceModifier.fillMaxWidth()) {
         snapshot.rows.take(rows).forEach { row ->
-            RecordRow(row = row)
+            RecordRow(row = row, onClick = openRecordAction(context, row.id))
         }
     }
 }
@@ -343,11 +343,12 @@ private fun StaticListBody(snapshot: AchievementWidgetSnapshot) {
  * ⚠️ 列表内绝不出现照片缩略图（Binder 事务膨胀，见 WIDGET_MAX_ROWS 注释）。
  */
 @Composable
-private fun RecordRow(row: AchievementWidgetRow) {
+private fun RecordRow(row: AchievementWidgetRow, onClick: Action) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .padding(horizontal = 0.dp, vertical = 6.dp),
+            .padding(horizontal = 0.dp, vertical = 6.dp)
+            .clickable(onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -423,5 +424,13 @@ private fun openAchievementAction(context: Context): androidx.glance.action.Acti
     actionStartActivity(
         Intent(context, MainActivity::class.java)
             .setAction(WidgetActions.OPEN_ACHIEVEMENT)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
+
+private fun openRecordAction(context: Context, recordId: Long): Action =
+    actionStartActivity(
+        Intent(context, MainActivity::class.java)
+            .setAction(WidgetActions.OPEN_RECORD)
+            .putExtra(WidgetActions.RECORD_ID_EXTRA, recordId)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     )

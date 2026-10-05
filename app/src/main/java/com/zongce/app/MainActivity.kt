@@ -62,17 +62,21 @@ private const val ROUTE_ENTRY = "entry/{recordId}"
 
 class MainActivity : ComponentActivity() {
     private var widgetAction by mutableStateOf<String?>(null)
+    private var widgetRecordId by mutableStateOf<Long?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         widgetAction = savedInstanceState?.getString("widgetAction")
             ?: intent?.action?.takeIf(WidgetActions::isWidgetAction)
+        widgetRecordId = savedInstanceState?.getLong("widgetRecordId", 0L)?.takeIf { it != 0L }
+            ?: intent?.getLongExtra(WidgetActions.RECORD_ID_EXTRA, 0L)?.takeIf { it != 0L }
         enableEdgeToEdge()
         setContent {
             JicunTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     App(
                         widgetAction = widgetAction,
+                        widgetRecordId = widgetRecordId,
                         onWidgetActionConsumed = { widgetAction = null }
                     )
                 }
@@ -84,10 +88,12 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         widgetAction = intent.action?.takeIf(WidgetActions::isWidgetAction)
+        widgetRecordId = intent.getLongExtra(WidgetActions.RECORD_ID_EXTRA, 0L).takeIf { it != 0L }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("widgetAction", widgetAction)
+        outState.putLong("widgetRecordId", widgetRecordId ?: 0L)
         super.onSaveInstanceState(outState)
     }
 }
@@ -98,6 +104,7 @@ private fun App(
     exportVm: ExportViewModel = viewModel(),
     updateVm: UpdateViewModel = viewModel(),
     widgetAction: String? = null,
+    widgetRecordId: Long? = null,
     onWidgetActionConsumed: () -> Unit = {}
 ) {
     val nav = rememberNavController()
@@ -120,11 +127,17 @@ private fun App(
 
     // 小组件来的 action 分两路：录入类先切到拍摄页（实际动作由 CaptureScreen 触发），
     // 浏览类直接落到成果页。
-    androidx.compose.runtime.LaunchedEffect(widgetAction) {
+    androidx.compose.runtime.LaunchedEffect(widgetAction, widgetRecordId) {
         when (widgetAction) {
             WidgetActions.CAPTURE, WidgetActions.PICK_PHOTOS ->
                 if (currentRoute != ROUTE_CAPTURE) selectTab(ROUTE_CAPTURE)
             WidgetActions.OPEN_ACHIEVEMENT -> selectTab(ROUTE_ACHIEVEMENT)
+            WidgetActions.OPEN_RECORD -> {
+                widgetRecordId?.takeIf { it != 0L }?.let { nav.navigate("entry/$it") }
+            }
+        }
+        if (widgetAction == WidgetActions.OPEN_ACHIEVEMENT || widgetAction == WidgetActions.OPEN_RECORD) {
+            onWidgetActionConsumed()
         }
     }
 
