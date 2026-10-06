@@ -15,8 +15,8 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.gradleProperty("releaseVersionCode").orElse("2").get().toInt()
-        // v1.5.4：优化组件年份切换，并支持点击成果直接编辑。
-        versionName = providers.gradleProperty("versionName").orElse("1.5.4").get()
+        // v1.5.5：组件状态缓存与原子化年份切换。
+        versionName = providers.gradleProperty("versionName").orElse("1.5.5").get()
     }
 
     // 本地没有签名参数时仍可构建 release；CI 通过 GitHub Secrets 注入正式签名。

@@ -6,10 +6,12 @@
 package com.zongce.app.widget
 
 import android.content.Context
+import androidx.glance.GlanceId
+import androidx.glance.appwidget.state.getAppWidgetState
+import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.compose.ui.graphics.toArgb
 import com.zongce.app.R
 import com.zongce.app.core.AcademicYear
-import com.zongce.app.data.AppDatabase
 import com.zongce.app.data.RecordWithPhotos
 import com.zongce.app.data.WidgetYearStore
 import kotlinx.coroutines.Dispatchers
@@ -68,21 +70,23 @@ object AchievementWidgetLoader {
      * 装载一次渲染所需的数据。内部 runCatching：查库失败一律回落 FALLBACK，
      * 绝不向上抛 —— 组件刷新失败最坏只是桌面暂时旧，不能污染调用方。
      */
-    suspend fun load(context: Context): AchievementWidgetSnapshot =
+    suspend fun load(context: Context, glanceId: GlanceId? = null): AchievementWidgetSnapshot =
         withContext(Dispatchers.IO) {
             runCatching {
                 val app = context.applicationContext
-                // 一次性快照读：first() 拿当前值就走，不留订阅。
-                val items = AppDatabase.get(app).awardDao().allWithPhotos().first()
-
-                val years = AcademicYear.yearsOf(items.map { it.record.awardDate })
-                // 学年归属全仓只有 AcademicYear 一处实现，这里禁止手写日期比较。
-                // 组件学年与 App 成果页偏好分开；删空当前学年时回落到 LABEL。
-                val year = WidgetYearStore.current(app, years)
+                // 箭头刷新只读缓存；首次绑定或缓存丢失时才回源 Room。
+                val cached = AchievementWidgetCache.read(app)
+                    ?: AchievementWidgetCache.rebuild(app)
+                val years = cached.years
+                val selected = glanceId?.let {
+                    getAppWidgetState(app, PreferencesGlanceStateDefinition, it)
+                        .let { state -> state[AchievementWidgetState.selectedYear] }
+                } ?: WidgetYearStore.current(app, years)
+                val year = selected.takeIf { it in years } ?: years.firstOrNull() ?: AcademicYear.LABEL
 
                 // 排序必须在过滤之后：先筛出该学年，再按日期降序。
-                val ofYear = AcademicYear.inYear(items, year) { it.record.awardDate }
-                    .sortedByDescending { it.record.awardDate }
+                val ofYear = AcademicYear.inYear(cached.records, year) { it.awardDate }
+                    .sortedByDescending { it.awardDate }
 
                 val rows = ofYear
                     .take(AchievementWidget.WIDGET_MAX_ROWS)
@@ -93,7 +97,7 @@ object AchievementWidgetLoader {
                     year = year,
                     recordCount = ofYear.size,
                     coveredWuyu = ofYear
-                        .map { it.record.wuyu }
+                        .map { it.wuyu }
                         .filter { it.isNotBlank() }
                         .distinct()
                         .count(),
@@ -103,21 +107,20 @@ object AchievementWidgetLoader {
             }.getOrElse { AchievementWidgetSnapshot.FALLBACK }
         }
 
-    private fun RecordWithPhotos.toRow(context: Context): AchievementWidgetRow {
-        val record = this.record
+    private fun CachedAchievementRecord.toRow(context: Context): AchievementWidgetRow {
         return AchievementWidgetRow(
-            id = record.id,
-            name = record.awardName.ifBlank {
+            id = id,
+            name = awardName.ifBlank {
                 context.getString(R.string.achievement_widget_unnamed)
             },
             subline = listOfNotNull(
-                record.wuyu.ifBlank { null },
-                record.awardDate.ifBlank {
+                wuyu.ifBlank { null },
+                awardDate.ifBlank {
                     context.getString(R.string.achievement_widget_undated)
                 },
-                record.grade.takeIf { it.isNotBlank() }
+                grade.takeIf { it.isNotBlank() }
             ).joinToString(" · "),
-            wuyuColor = WidgetPalette.wuyuColor(record.wuyu).toArgb()
+            wuyuColor = WidgetPalette.wuyuColor(wuyu).toArgb()
         )
     }
 }

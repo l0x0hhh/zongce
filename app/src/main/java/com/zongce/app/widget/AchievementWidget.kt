@@ -44,12 +44,15 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.glance.state.PreferencesGlanceStateDefinition
 import com.zongce.app.MainActivity
 import com.zongce.app.R
 import com.zongce.app.WidgetActions
 import kotlin.math.floor
 
 class AchievementWidget : GlanceAppWidget() {
+
+    override val stateDefinition = PreferencesGlanceStateDefinition
 
     /**
      * 必须是 Responsive：默认 Single 只按 minWidth/minHeight 渲染一档，
@@ -69,7 +72,7 @@ class AchievementWidget : GlanceAppWidget() {
      * 约 45 秒；把 Room 查询放进 composition 里等于拿 45 秒的窗口去赌冷启动首帧。
      */
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val snapshot = AchievementWidgetLoader.load(context)
+        val snapshot = AchievementWidgetLoader.load(context, id)
         provideContent {
             AchievementWidgetContent(snapshot = snapshot)
         }

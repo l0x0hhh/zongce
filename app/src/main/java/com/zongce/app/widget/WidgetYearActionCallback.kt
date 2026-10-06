@@ -5,14 +5,9 @@ import android.content.Context
 import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
-import com.zongce.app.core.AcademicYear
-import com.zongce.app.data.AppDatabase
+import androidx.glance.appwidget.state.updateAppWidgetState
+import androidx.glance.state.PreferencesGlanceStateDefinition
 import com.zongce.app.data.WidgetYearStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 class WidgetYearActionCallback : ActionCallback {
     override suspend fun onAction(
@@ -21,20 +16,26 @@ class WidgetYearActionCallback : ActionCallback {
         parameters: ActionParameters
     ) {
         val delta = parameters[DELTA_KEY] ?: return
-        mutex.withLock {
-            withContext(Dispatchers.IO) {
-                val app = context.applicationContext
-                val items = AppDatabase.get(app).awardDao().allWithPhotos().first()
-                val years = AcademicYear.yearsOf(items.map { it.record.awardDate })
-                WidgetYearStore.move(app, years, delta)
-                // 只更新被点击的实例，避免 updateAll() 让多个组件实例排队重绘。
-                WidgetRefresh.refresh(app, glanceId)
-            }
+        val app = context.applicationContext
+        val cached = AchievementWidgetCache.read(app)
+            ?: AchievementWidgetCache.rebuild(app)
+        if (cached.years.isEmpty()) return
+        var targetYear: String? = null
+        updateAppWidgetState(app, glanceId) { preferences ->
+            val current = preferences[AchievementWidgetState.selectedYear]
+                ?.takeIf { it in cached.years }
+                ?: WidgetYearStore.current(app, cached.years).takeIf { it in cached.years }
+                ?: cached.years.first()
+            val currentIndex = cached.years.indexOf(current)
+            val targetIndex = (currentIndex + delta).coerceIn(0, cached.years.lastIndex)
+            targetYear = cached.years[targetIndex]
+            preferences[AchievementWidgetState.selectedYear] = targetYear!!
         }
+        // 状态写入完成后只更新当前实例，不查询 Room、不刷新全部组件。
+        WidgetRefresh.refresh(app, glanceId)
     }
 
     companion object {
         val DELTA_KEY = ActionParameters.Key<Int>("widget_year_delta")
-        private val mutex = Mutex()
     }
 }
