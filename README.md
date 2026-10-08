@@ -125,11 +125,12 @@ docs/adr/                  # 架构决策记录
 - **国内镜像（可选）**：再配 1 个 Secret `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects`）和 2 个 Variables `GITEE_OWNER` / `GITEE_REPO`，发版时会额外把 APK 传到 Gitee Release、并把 `latest.json` 更新到镜像仓库的 raw 固定路径。**三项缺任一项，镜像整段自动跳过**，GitHub 侧的发布不受影响。镜像仓库需先有分支（网页上建一个文件即可）。
 - **同步到产品页（可选）**：配 1 个 Secret `LANDING_TOKEN`（对落地页仓库 `l0x0hhh/JICUN` 有 `contents:write` 的令牌；仓库名可用 Variable `LANDING_REPO` 覆盖），发版时会把 APK 覆盖到落地页的 `public/downloads/jicun.apk`，Netlify 随之重新部署。**没配就跳过**，落地页仓库自己有个每天拉取最新包的兜底 workflow。
 
-- **触发站点点部署（可选，强烈建议配）**：配 1 个 Secret `NETLIFY_DEPLOY_HOOK`（Netlify → Site configuration → Build & deploy → Build hooks → Add build hook → 选生产分支 → 复制地址）。推完落地页仓库后会主动 POST 一次，**站点即使没接 Git 自动部署，也能把线上更新过来**。
+- **触发站点点部署（可选，强烈建议配）**：配 1 个 Secret `SITE_DEPLOY_HOOK`。它就是托管方提供的"POST 一下重新构建"的地址 —— Netlify 在 Site configuration → Build & deploy → Build hooks，Cloudflare Pages 在 Settings → Builds & deployments → Deploy hooks，Vercel 在 Settings → Git → Deploy Hooks。**本仓库不绑定任何一家**，换托管只改这个 Secret。推完落地页仓库后会主动 POST 一次，**站点即使没接 Git 自动部署，也能把线上更新过来**。
   - 为什么需要：仓库里有新文件 ≠ 用户读得到新文件。**v1.5.5 发布后落地页仓库里是 1.5.5，线上却一直是 1.5.2，持续五天，而流水线全绿** —— "推成功了"和"用户拿到了"之间没有任何人校验。
 - **线上端点校验（自动，必过）**：发版最后一步回读 `LIVE_MANIFEST_URL`（默认 `https://jicun.netlify.app/downloads/latest.json`）与 `LIVE_APK_URL`，要求**线上清单版本 = 本次版本**且**线上 APK 字节数 = 本地刚构建的 APK**，最多等 180 秒，对不上就让整个 run 变红。`Content-Type` 不对只给 warning（App 用 `HttpURLConnection`，不看 Content-Type；但浏览器会把清单当成文件下载）。
   - 地址可用 Variables `LIVE_MANIFEST_URL` / `LIVE_APK_URL` 覆盖，二者与编译进包的 `-PupdateManifestUrl` **同源**，不会各写一份。
-  - **这一步红了怎么查**：先去站点的 Deploys 面板，看这次推送对应的那条 Production 部署是成功、失败、还是 **Skipped**。Skipped 表示部署根本没跑 —— 常见于 Netlify 额度/计费用尽（2026-10-08 就是这个原因：站点停在最后一次成功部署上，而流水线全绿）。此时改配置、加 build hook 都没用，得先恢复额度或换托管。
+  - **这一步红了怎么查**：先去站点的 Deploys 面板，看这次推送对应的那条 Production 部署是成功、失败、还是 **Skipped**。Skipped 表示部署根本没跑 —— 常见于托管方额度/计费用尽（2026-10-08 就是这个原因：站点停在最后一次成功部署上，而流水线全绿）。此时改配置、加 build hook 都没用，得先恢复额度或换托管。
+- **要换托管 / 迁移镜像**：⚠️ 动手前先读 [docs/operations/update-mirror.md](docs/operations/update-mirror.md) —— 镜像地址是**编译进 APK** 的，换地址只对新构建的包生效；**顺序错了会把最需要镜像的那批用户永久留在旧版**。
 
   > ⚠️ **"跳过"是静默的**：流水线整体仍显示 `success`、正式包照常发出，只有产品页会停在旧包。跳过 `LANDING_TOKEN` 时不会做端点校验，只能靠落地页仓库的每日兜底。**发版后请直接看 run summary 那张表：只有「线上更新端点」是"已同步"，用户才真的能更新。**
   >
@@ -154,7 +155,7 @@ docs/adr/                  # 架构决策记录
    ```
 3. ★ **打标签发版**：`git tag v1.2.2 && git push origin v1.2.2`（或在 Actions 里手动触发 Release 并填版本号）。流水线解签名密钥 → 跑测试 → 构建签名包 → 建 GitHub Release。
 4. **发布说明**（自动）：从 `VERSION_HISTORY.md` 里 `## v<版本>` 那一段生成 GitHub Release 说明；找不到条目会 warning 并退化成一句通用文案。
-5. **产品页同步**（自动，需 `LANDING_TOKEN`）：把 APK 与 `latest.json` 覆盖到落地页仓库的 `public/downloads/`；配了 `NETLIFY_DEPLOY_HOOK` 还会主动踢一次构建。Gitee 镜像已停用。
+5. **产品页同步**（自动，需 `LANDING_TOKEN`）：把 APK 与 `latest.json` 覆盖到落地页仓库的 `public/downloads/`；配了 `SITE_DEPLOY_HOOK` 还会主动踢一次构建。Gitee 镜像已停用（是否恢复见 [docs/operations/update-mirror.md](docs/operations/update-mirror.md)）。
 6. **线上端点校验**（自动，必过）：回读线上清单与线上 APK，确认用户端真的已经是本版本，否则 run 变红。
 
 > 只有第 2、3 步需要人工，其余全自动。

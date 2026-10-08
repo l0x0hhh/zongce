@@ -26,14 +26,15 @@
   - 国内镜像永远报 1.5.2 —— GitHub 可达时用户被带去 GitHub 慢链下载（镜像的加速价值归零），**GitHub 不可达时用户被判成"已是最新"、永久卡在旧版**。这正是双源设计当初要防的坑，被镜像过期重新引入了。
 - **修复**（本批改动）：
   1. `release.yml` 新增 `Verify the live update endpoint`：回读线上清单版本与线上 APK 字节数，对不上整个 run 变红。**"发布成功"从此定义为"用户端能拿到"，而不是"我推了"。**
-  2. `release.yml` 新增 `Trigger the Netlify deploy`：配 `NETLIFY_DEPLOY_HOOK` 后主动踢一次站点构建 —— 站点没接 Git 自动部署时的唯一抓手。
+  2. `release.yml` 新增 `Trigger the site deploy`：配 `SITE_DEPLOY_HOOK` 后主动踢一次站点构建 —— 站点没接 Git 自动部署时的唯一抓手。**这个 Secret 刻意不叫 Netlify 什么**：换托管时不用改代码。
   3. 落地页 `sync-apk.yml` 的每日兜底补上同一套校验：线上不对就触发部署再回读，修不好就报错（兜底不能只兜一半）。
   4. `release.yml` 的 Release 说明改为从本文件 `## v<版本>` 段落抽取，不再写死（此前那段文案从 v1.5.2 起一字未改，1.5.5 的用户在更新弹窗里看到的还是 1.5.2 的说明）。
   5. `LIVE_MANIFEST_URL` / `LIVE_APK_URL` 在 workflow 里只定义一次，**编译进包的 `-PupdateManifestUrl` 与校验读的是同一个地址**。
 - **根因已确认（2026-10-08，Netlify 后台）**：站点**确实连着** `l0x0hhh/JICUN` 自动部署 —— 推送到达后 Activity 里会新增一条 Production 部署记录，但随即被标成 **Skipped**；站点因此停在最后一次成功的部署（**Published on Oct 3** = v1.5.2）。Netlify 顶部横幅写明：账号运行在 operational credits 上，**生产部署与 Agent Runner 已暂停**，需升级团队或等下一个计费周期恢复。
-  - 也就是说：**代码、仓库、站点连接都没问题，卡在 Netlify 的额度/计费**。额度恢复之前 `NETLIFY_DEPLOY_HOOK` 同样无效（它触发的还是生产部署）。
-  - 恢复后的动作：在 Netlify 的 Deploys 面板 **Retry deploy**（那条 Skipped 不会自动补跑），或配好 `NETLIFY_DEPLOY_HOOK` 后手动跑一次落地页的 `Sync APK` workflow —— 它会发现线上端点过期并主动触发部署。
-  - 若考虑换托管：国内镜像只需要一个能托管静态文件、并按 `Content-Type: application/vnd.android.package-archive` 返回 `.apk` 的地方。换域名要同步改 `LIVE_MANIFEST_URL` 与 `-PupdateManifestUrl`；**已装机用户仍会先查 Netlify**，但 App 并发查两源取版本更高者，所以只要新源更新就不会被旧源卡住。
+  - 也就是说：**代码、仓库、站点连接都没问题，卡在 Netlify 的额度/计费**。额度恢复之前 `SITE_DEPLOY_HOOK` 同样无效（它触发的还是生产部署）。
+  - 恢复后的动作：在 Netlify 的 Deploys 面板 **Retry deploy**（那条 Skipped 不会自动补跑），或配好 `SITE_DEPLOY_HOOK` 后手动跑一次落地页的 `Sync APK` workflow —— 它会发现线上端点过期并主动触发部署。
+  - **⚠️ 换托管救不到已装机用户（上一版这条写错了，此处更正）**：`BuildConfig.UPDATE_MANIFEST_URL` 是**构建期编译进包**的，所以新地址**只对之后构建的包生效**；已装机的包（例如 v1.5.2 那批）只会查 **Netlify + GitHub**，永远不知道新址存在。而最需要镜像的恰恰是 GitHub 不通的那批人 —— 他们**只**认 Netlify。因此换托管的正确含义是「**下一版起不再依赖 Netlify**」，不是「马上摘掉 Netlify」；顺序必须是「先让 Netlify 恢复并成功部署一次 → 发一版把用户带上来 → 再切新托管」。
+  - 候选托管、备案/403 限制、割接与回滚清单：见 [`docs/operations/update-mirror.md`](docs/operations/update-mirror.md)。
 
 ## v1.5.3 更新（组件独立学年与删除同步）
 

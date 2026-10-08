@@ -44,8 +44,9 @@ jobs:
       # 只在这里定义一次，构建用的 updateManifestUrl 也从它取，避免两处写死后各自漂移。
       LIVE_MANIFEST_URL: ${{ vars.LIVE_MANIFEST_URL || 'https://jicun.netlify.app/downloads/latest.json' }}
       LIVE_APK_URL: ${{ vars.LIVE_APK_URL || 'https://jicun.netlify.app/downloads/jicun.apk' }}
-      # 可选：Netlify build hook。站点若没有接 Git 自动部署，这是唯一能补救的抓手。
-      NETLIFY_DEPLOY_HOOK: ${{ secrets.NETLIFY_DEPLOY_HOOK }}
+      # 可选：站点的 build hook。Netlify / Cloudflare Pages / Vercel 都提供这种"POST 一下
+      # 就重新构建"的地址，本文件不绑定任何一家 —— 换托管时只需改这个 Secret。
+      SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
     steps:
       - name: Check out source
         uses: actions/checkout@v5
@@ -307,22 +308,22 @@ jobs:
           echo "已同步到落地页：public/downloads/jicun.apk（Netlify 应会自动重新部署）"
 
       # 站点若没接 Git 自动部署（或部署早就挂了），在命令行里推仓库是没用的 ——
-      # 只能靠 Netlify build hook 主动踢一次。没配 hook 就只警告，不拦住发布。
+      # 只能靠托管方的 build hook 主动踢一次。没配 hook 就只警告，不拦住发布。
       # v1.5.5 的事故正是这一段：仓库里是 1.5.5，线上站点停在 1.5.2，五天没人发现。
-      - name: Trigger the Netlify deploy
-        id: netlify_deploy
+      - name: Trigger the site deploy
+        id: site_deploy
         if: always() && steps.landing_apk.outcome == 'success'
         run: |
-          if [ -z "${NETLIFY_DEPLOY_HOOK}" ]; then
-            echo "::warning::没有配置 NETLIFY_DEPLOY_HOOK。若线上站点不是自动部署，仓库更新了、用户端也不会变。"
+          if [ -z "${SITE_DEPLOY_HOOK}" ]; then
+            echo "::warning::没有配置 SITE_DEPLOY_HOOK。若线上站点不是自动部署，仓库更新了、用户端也不会变。"
             exit 0
           fi
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
             --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 10 \
-            "${NETLIFY_DEPLOY_HOOK}") || CODE="000"
-          echo "Netlify build hook 返回 HTTP ${CODE}"
+            "${SITE_DEPLOY_HOOK}") || CODE="000"
+          echo "站点 build hook 返回 HTTP ${CODE}"
           if [ "$CODE" != "200" ] && [ "$CODE" != "201" ]; then
-            echo "::warning::Netlify build hook 返回 HTTP ${CODE}，构建可能没有被触发。"
+            echo "::warning::站点 build hook 返回 HTTP ${CODE}，构建可能没有被触发。"
           fi
 
       # 交付契约：决定用户能否更新的是线上那两个 URL，不是仓库里的文件。
@@ -382,7 +383,7 @@ jobs:
           ATTACHMENT: ${{ steps.mirror_attachment.outcome }}
           MANIFEST: ${{ steps.mirror_manifest.outcome }}
           LANDING: ${{ steps.landing_apk.outcome }}
-          NETLIFY_REL: ${{ steps.netlify_deploy.outcome }}
+          SITE_DEPLOY: ${{ steps.site_deploy.outcome }}
           LIVE: ${{ steps.live_endpoint.outcome }}
         run: |
           V="${RELEASE_VERSION#v}"
@@ -396,7 +397,7 @@ jobs:
             echo "| Gitee 镜像附件 | $(label "$ATTACHMENT") |"
             echo "| Gitee 镜像清单 | $(label "$MANIFEST") |"
             echo "| 落地页安装包 | $(label "$LANDING") |"
-            echo "| Netlify 部署触发 | $(label "$NETLIFY_REL") |"
+            echo "| 站点点部署触发 | $(label "$SITE_DEPLOY") |"
             echo "| **线上更新端点（用户实际读到的）** | $(label "$LIVE") |"
             echo ""
             echo "**只有「线上更新端点」是已同步，用户才真的能拿到 ${V}。**"
