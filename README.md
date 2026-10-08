@@ -125,7 +125,12 @@ docs/adr/                  # 架构决策记录
 - **国内镜像（可选）**：再配 1 个 Secret `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects`）和 2 个 Variables `GITEE_OWNER` / `GITEE_REPO`，发版时会额外把 APK 传到 Gitee Release、并把 `latest.json` 更新到镜像仓库的 raw 固定路径。**三项缺任一项，镜像整段自动跳过**，GitHub 侧的发布不受影响。镜像仓库需先有分支（网页上建一个文件即可）。
 - **同步到产品页（可选）**：配 1 个 Secret `LANDING_TOKEN`（对落地页仓库 `l0x0hhh/JICUN` 有 `contents:write` 的令牌；仓库名可用 Variable `LANDING_REPO` 覆盖），发版时会把 APK 覆盖到落地页的 `public/downloads/jicun.apk`，Netlify 随之重新部署。**没配就跳过**，落地页仓库自己有个每天拉取最新包的兜底 workflow。
 
-  > ⚠️ **这个跳过是静默的**：流水线整体仍显示 `success`、正式包照常发出，只有产品页会停在旧包（用户从宣传页下载拿到的是旧版本）。**发版后请在 Actions 里确认第 14 步 `Publish the APK to the landing page` 是 success 而不是 skipped** —— v1.3.0 就踩过这个坑。
+- **触发站点点部署（可选，强烈建议配）**：配 1 个 Secret `NETLIFY_DEPLOY_HOOK`（Netlify → Site configuration → Build & deploy → Build hooks → Add build hook → 选生产分支 → 复制地址）。推完落地页仓库后会主动 POST 一次，**站点即使没接 Git 自动部署，也能把线上更新过来**。
+  - 为什么需要：仓库里有新文件 ≠ 用户读得到新文件。**v1.5.5 发布后落地页仓库里是 1.5.5，线上却一直是 1.5.2，持续五天，而流水线全绿** —— "推成功了"和"用户拿到了"之间没有任何人校验。
+- **线上端点校验（自动，必过）**：发版最后一步回读 `LIVE_MANIFEST_URL`（默认 `https://jicun.netlify.app/downloads/latest.json`）与 `LIVE_APK_URL`，要求**线上清单版本 = 本次版本**且**线上 APK 字节数 = 本地刚构建的 APK**，最多等 180 秒，对不上就让整个 run 变红。`Content-Type` 不对只给 warning（App 用 `HttpURLConnection`，不看 Content-Type；但浏览器会把清单当成文件下载）。
+  - 地址可用 Variables `LIVE_MANIFEST_URL` / `LIVE_APK_URL` 覆盖，二者与编译进包的 `-PupdateManifestUrl` **同源**，不会各写一份。
+
+  > ⚠️ **"跳过"是静默的**：流水线整体仍显示 `success`、正式包照常发出，只有产品页会停在旧包。跳过 `LANDING_TOKEN` 时不会做端点校验，只能靠落地页仓库的每日兜底。**发版后请直接看 run summary 那张表：只有「线上更新端点」是"已同步"，用户才真的能更新。**
   >
   > **怎么建令牌**（推荐 fine-grained，最小权限）：GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token；
   > Repository access 选 **Only select repositories**，只勾 `l0x0hhh/JICUN`；
@@ -147,10 +152,13 @@ docs/adr/                  # 架构决策记录
    .\gradlew.bat :app:assembleRelease -PversionName=1.2.2 -PreleaseVersionCode=1000006 -PsigningStoreFile=release.keystore
    ```
 3. ★ **打标签发版**：`git tag v1.2.2 && git push origin v1.2.2`（或在 Actions 里手动触发 Release 并填版本号）。流水线解签名密钥 → 跑测试 → 构建签名包 → 建 GitHub Release。
-4. **镜像与产品页**（自动）：同一次运行里还会把 APK 传到 Gitee Release、更新镜像的 `latest.json`、并把 APK 同步到落地页的 `public/downloads/jicun.apk`。这两段都是"配了才跑、缺配置自动跳过"。
-5. 落地页由 Netlify 监听仓库自动部署，无需额外操作。
+4. **发布说明**（自动）：从 `VERSION_HISTORY.md` 里 `## v<版本>` 那一段生成 GitHub Release 说明；找不到条目会 warning 并退化成一句通用文案。
+5. **产品页同步**（自动，需 `LANDING_TOKEN`）：把 APK 与 `latest.json` 覆盖到落地页仓库的 `public/downloads/`；配了 `NETLIFY_DEPLOY_HOOK` 还会主动踢一次构建。Gitee 镜像已停用。
+6. **线上端点校验**（自动，必过）：回读线上清单与线上 APK，确认用户端真的已经是本版本，否则 run 变红。
 
-> 只有第 2、3 步需要人工，其余全自动。**"忘了更新产品页的安装包"不会再发生了**——发版时会一起同步。
+> 只有第 2、3 步需要人工，其余全自动。
+>
+> ⚠️ **"发版成功"的定义是第 6 步绿**，而不是第 3 步发出去。第 5 步被跳过（没配 `LANDING_TOKEN`）时第 6 步也不会跑 —— 这时产品页与国内镜像靠落地页仓库每天的兜底 workflow，最多滞后一天。
 
 ## 已知未完成
 

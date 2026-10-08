@@ -6,13 +6,31 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本号 | `1.5.5` |
-| 版本状态 | 开发中，未打 tag。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
-| 最近更新 | 2026-10-04 |
-| Android 应用版本 | `versionName 1.5.5`（本地默认）；正式包由 tag 与流水线注入 `versionCode 1000000+run_number`；本机无口令构建不了可安装的验证包 |
+| 版本号 | `1.5.5` —— **已打 tag 并发布**（2026-10-06，Release run `37407521856`） |
+| 版本状态 | 已发布。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
+| 最近更新 | 2026-10-08（修正本表此前的失真记录：曾写作"开发中，未打 tag""改动尚未提交"，而 tag `v1.5.5` 与 Release 都早已存在） |
+| Android 应用版本 | 线上 `versionName 1.5.5`，`versionCode = 1000000 + 构建号`；本地默认仍是 `versionName 1.5.5` / `versionCode 2`，**装不上线上包，别拿本地包做真机测试** |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | v1.5.5 组件状态缓存与原子化年份切换改动**尚未提交** |
+| 工作区状态 | v1.5.5 已提交并打 tag；工作区另有两处**未提交**的组件改动（`AchievementWidget.kt` 学年箭头改成按钮样式、`WidgetYearActionCallback.kt` 连点 180ms 防抖重绘），以及未入库的 `app/build-alex/` 实验构建目录 |
+| 线上交付状态 | ⚠️ **`https://jicun.netlify.app/downloads/latest.json` 仍停在 `1.5.2`**（落地页仓库里已经是 `1.5.5`）—— 站点没随仓库更新，详见下节 |
+
+## 交付事故与修复：线上更新端点停在旧版本（2026-10-08）
+
+- **现象**：v1.5.5 于 2026-10-06 发布，Release 流水线 `37407521856` 全绿（GitHub Release ✅、落地页同步 ✅、Gitee 两步按设计 skipped）。五天后的 2026-10-08 实测线上：
+  - `https://jicun.netlify.app/downloads/latest.json` 返回 **`1.5.2`**，且 `Content-Type: application/vnd.android.package-archive`；
+  - `https://jicun.netlify.app/downloads/jicun.apk` 是 **13,753,292 字节 = v1.5.2 的包**（v1.5.5 是 13,753,088）；
+  - 而落地页仓库 `main` 里 `latest.json` 已经是 `1.5.5`，每日兜底 workflow 也天天 success。
+- **根因**：「仓库 → 站点」这一段**没有任何人校验**。流水线把"推成功了"当成"发布成功了"，兜底 workflow 也只兜了仓库那一半。后果有两个，都不是"慢一点"那么轻：
+  - 产品页的下载按钮发的是**三个版本前**的包，新用户装到 1.5.2；
+  - 国内镜像永远报 1.5.2 —— GitHub 可达时用户被带去 GitHub 慢链下载（镜像的加速价值归零），**GitHub 不可达时用户被判成"已是最新"、永久卡在旧版**。这正是双源设计当初要防的坑，被镜像过期重新引入了。
+- **修复**（本批改动）：
+  1. `release.yml` 新增 `Verify the live update endpoint`：回读线上清单版本与线上 APK 字节数，对不上整个 run 变红。**"发布成功"从此定义为"用户端能拿到"，而不是"我推了"。**
+  2. `release.yml` 新增 `Trigger the Netlify deploy`：配 `NETLIFY_DEPLOY_HOOK` 后主动踢一次站点构建 —— 站点没接 Git 自动部署时的唯一抓手。
+  3. 落地页 `sync-apk.yml` 的每日兜底补上同一套校验：线上不对就触发部署再回读，修不好就报错（兜底不能只兜一半）。
+  4. `release.yml` 的 Release 说明改为从本文件 `## v<版本>` 段落抽取，不再写死（此前那段文案从 v1.5.2 起一字未改，1.5.5 的用户在更新弹窗里看到的还是 1.5.2 的说明）。
+  5. `LIVE_MANIFEST_URL` / `LIVE_APK_URL` 在 workflow 里只定义一次，**编译进包的 `-PupdateManifestUrl` 与校验读的是同一个地址**。
+- **仍需人工确认（代码之外）**：Netlify 站点是否确实连着 `l0x0hhh/JICUN` 自动部署。若没有，请配 `NETLIFY_DEPLOY_HOOK`（见 `README.md` 的「开发与发布」）。
 
 ## v1.5.3 更新（组件独立学年与删除同步）
 
@@ -237,12 +255,16 @@
 - [x] **编译 / 资源 / Manifest 处理通过**：`assembleDebug` 与 `assembleRelease` 的 `compileDebugKotlin`、`processDebugMainManifest`、`processDebugResources` 均为 executed 且成功（非 UP-TO-DATE），确认小组件返工删除 `AchievementListService` 与 `widget_achievement_item.xml` 后无悬空引用。另做全仓 grep 复核：`AchievementListService` / `widget_achievement_item` / `REMOTEVIEWS_SERVICE` 仅剩两处说明性注释，无任何代码或资源引用。
 - [x] **JVM 单元测试（v1.3.6 批次）：60 个用例全部通过**（`AcademicYearTest` 8 + `FileNameRuleTest` 3 + `ExportCheckTest` 3 + `ExportPlanTest` 17 + `UpdateCheckerTest` 12 + `UpdateThrottleBoundaryTest` 9 + `UpdateThrottleTest` 8，`failures=0 errors=0 skipped=0`），命令同上，结果 `BUILD SUCCESSFUL in 2m 29s`、`26 actionable tasks: 7 executed, 19 up-to-date`（`7 executed` 说明是真跑，非 UP-TO-DATE 假绿）。注：这 60 条覆盖的是纯逻辑，**跨进程同步不在覆盖范围内，需真机验证**。
 - [x] **正式 Release 已发布（2026-09-23）**：`暨存 v1.3.6` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.3.6 ，资产 `jicun-1.3.6.apk`（13,600,034 字节），Release 流水线 run `35843994511` **14 步全绿**（含 Gitee 镜像上传与清单发布）。线上包已下载回来复验：`aapt2 dump badging` 得 `com.zongce.app` / **versionCode `1000012`（> v1.3.5 的 `1000011`，可直接覆盖升级）** / versionName `1.3.6` / label 暨存；`apksigner verify` 通过，证书 SHA-256 `7a1eeb88…` 与本机 keystore 一致。Gitee 镜像 `latest.json` 已同步 `1.3.6`（apkUrl 指向镜像同名附件）；落地页 `https://jicun.netlify.app/downloads/jicun.apk` 已同步为同一体积、`Content-Type: application/vnd.android.package-archive` 正确。**注：v1.3.5 那次 Release 的 GitHub 附件上传失败（assets 为空）确属偶发，本次正常。**
+- [x] **线上交付端点实测（2026-10-08）**：用 `curl -D -` 实测线上 `latest.json` 与 `jicun.apk`，确认线上停在 `1.5.2`、仓库已是 `1.5.5`；并逐条核对了 v1.5.5 Release run `37407521856` 的步骤（Gitee 两步 skipped，其余 success）。据此在 `release.yml` 与落地页 `sync-apk.yml` 加入线上端点校验（见上文「交付事故与修复」）。
+- [ ] **线上端点仍未恢复**：截至 2026-10-08，`https://jicun.netlify.app/downloads/latest.json` 依旧是 `1.5.2`。需先确认 Netlify 是否连着落地页仓库；配好 `NETLIFY_DEPLOY_HOOK` 后重跑一次即可（**不必重新打 tag** —— 可对已有 tag 手动触发 Release，或直接跑落地页的兜底 workflow）。
 - [ ] 真机或模拟器功能验证（含成果小组件学年同步：App 内选完学年回桌面组件是否立刻刷新，以及固定摘要渲染、拉伸、桌面箭头切学年）。
 - [ ] **本地整包打包未跑通（环境问题，非代码问题）**：`mergeDebugGlobalSynthetics` 与 `mergeExtDexRelease` 两次分别失败，错误同为 `Could not move temporary workspace … .gradle-user/caches/transforms-4/<hash>-<uuid>` —— Windows 文件系统层的原子重命名被卡住，`--max-workers=1` 也规避不掉（同一根因在 v1.3.4 会话中已出现过一次）。已清理缓存里残留的临时目录后重跑。**dex 合并与 release 变体的最终打包以 CI（Linux）为准。**
 
 ## 最近一次提交
 
-`8c2af10` `fix: 成果组件学年同步——App 内选学年写入组件存储并推送刷新 (v1.3.6)` —— 已推送至 `origin/main`，对应 tag `v1.3.6`（2026-09-23 打 tag 走 CI 发布）。提交 `f71db8e`（v1.3.5）为其父提交。
+`59fe94d` `perf: cache achievement widget data and state (v1.5.5)` —— 已推送至 `origin/main`，对应 tag `v1.5.5`（2026-10-06 打 tag 走 CI 发布）。工作区在此之后另有两处未提交的组件改动。
+
+> 本批「交付事故与修复」的改动（`.github/workflows/release.yml`、落地页 `.github/workflows/sync-apk.yml`、`README.md`、`.gitignore`、本文件）见紧接其后的那次提交。
 
 > 本版修复的 bug 自 v1.3.3 起横跨三个版本、换了三种实现都无效。根因是**状态源分裂**（详见本版本更新一节），诊断报告见仓库根 `Jicun/成果组件学年同步-诊断与修复.md`。
 
@@ -255,8 +277,8 @@
 - `gradle.properties` 的 `android.overridePathCheck=true` 是当年中文路径时期的产物，AGP 每次构建都会警告它「experimental」。路径已是纯 ASCII，这项可以删掉。
 - 界面新增的提醒确认页还没上真机/模拟器过一遍（CI 只做到构建与单测）。
 - **Release 已跑通（2026-09-21）**，两次失败的根因都已定位并修掉：第一次＝4 个签名 Secret 未配好（keystore 口令遗失，已重新生成）；第二次＝`signingStoreFile` 相对路径被按 `app/` 解析（已改用 `rootProject.file()`）。签名口令**不入库、不进记忆**，由刘总存在自己的密码管理器；丢了就再生成一把（发新版本时换 key 会让老安装升级失败，届时需先卸载——目前只有 1.1.0 一个版本，尚无此负担）。
-- GitHub Release 的发行说明目前只有一行 `Full Changelog` 链接（`generate_release_notes` 在没有 PR 的仓库里生成不出内容）。想给 1.1.0 写正式说明的话，去 Release 页面点编辑补上即可。
-- **release.yml 没传 `-PupdateManifestUrl`** → 正式包 `UPDATE_MANIFEST_URL` 为空 → App 内更新永远走 GitHub Release 回退，镜像清单形同虚设。要让国内用户走镜像需在 release.yml 里注入。
+- ~~GitHub Release 的发行说明只有一行 `Full Changelog` 链接~~ → **已修（2026-10-08）**：说明改由 `release.yml` 从本文件 `## v<版本>` 段落生成；历史那几个 Release 想补说明的话，去 Release 页面点编辑。
+- ~~**release.yml 没传 `-PupdateManifestUrl`** → 镜像清单形同虚设~~ → **已修**：构建时注入 `-PupdateManifestUrl="${LIVE_MANIFEST_URL}"`，且线上校验读的是同一个地址。目前没解决的是**站点没更新**（见上节），不是包里没有地址。
 
 早先的记录卡曾把 `MainActivity.kt`、`ExportCheck.kt`、`AppViewModel.kt`、`CaptureScreen.kt`、`EntryScreen.kt`、`ListScreen.kt`、`UpdateDialog.kt` 和 `update/` 列为未提交改动，这些文件已在提交 `9e8686d` 中入库。
 
@@ -268,6 +290,8 @@
 4. 提交代码前更新最近更新日期、版本号和提交说明。
 5. 不把不属于当前功能的已有改动混入提交。
 6. 推送后补充远端提交号，并保留未验证事项。
+7. **发版前**：在本文件加一条 `## v<新版本> 更新（<主题>）` 段落 —— Release 说明就是从它抽取的（`release.yml` 的 `Extract the release notes`）。缺条目只会 warning + 退化文案，不至于拦住发布，但用户就看不到更新内容。
+8. **发版后**：看 Release run 的 summary 表，**只有「线上更新端点」是“已同步”，用户才真的能更新**；若显示跳过（没配 `LANDING_TOKEN`），就得等落地页仓库每天 09:17 的兜底。然后把 tag、Release run 号与上表「线上交付状态」回填。
 
 ## 版本号约定
 

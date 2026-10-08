@@ -27,3 +27,7 @@ Thumbs.db
 
 # Local scratch directory.
 tmp/
+
+# 实验性 / 一次性构建目录（例如排查问题时另建的 build-alex/）：不是源码，不入库。
+# 刻意不写 **/build-*/，免得将来引入 build-logic/ 这类真正需要入库的目录时被误伤。
+app/build-*/

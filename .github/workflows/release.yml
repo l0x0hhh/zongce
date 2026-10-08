@@ -40,6 +40,12 @@ jobs:
       GITEE_REPO: ${{ vars.GITEE_REPO }}
       LANDING_TOKEN: ${{ secrets.LANDING_TOKEN }}
       LANDING_REPO: ${{ vars.LANDING_REPO || 'l0x0hhh/JICUN' }}
+      # 线上交付端点：真正决定用户能否更新的是这两个 URL，不是仓库里的文件。
+      # 只在这里定义一次，构建用的 updateManifestUrl 也从它取，避免两处写死后各自漂移。
+      LIVE_MANIFEST_URL: ${{ vars.LIVE_MANIFEST_URL || 'https://jicun.netlify.app/downloads/latest.json' }}
+      LIVE_APK_URL: ${{ vars.LIVE_APK_URL || 'https://jicun.netlify.app/downloads/jicun.apk' }}
+      # 可选：Netlify build hook。站点若没有接 Git 自动部署，这是唯一能补救的抓手。
+      NETLIFY_DEPLOY_HOOK: ${{ secrets.NETLIFY_DEPLOY_HOOK }}
     steps:
       - name: Check out source
         uses: actions/checkout@v5
@@ -89,16 +95,52 @@ jobs:
       - name: Run tests
         run: ./gradlew test --no-daemon
 
-      # 清单地址要编译进 APK（BuildConfig.UPDATE_MANIFEST_URL）。
+      # 清单地址要编译进 APK（BuildConfig.UPDATE_MANIFEST_URL），取自 LIVE_MANIFEST_URL，
+      # 与下面「线上端点校验」读的是同一个地址 —— 构建进包的和被校验的必须是同一个。
       # Netlify 托管 APK 和 latest.json，GitHub Release 作为备用更新源。
       - name: Assemble signed release APK
         run: |
           ./gradlew :app:assembleRelease --no-daemon \
             -PversionName="${RELEASE_VERSION#v}" \
             -PreleaseVersionCode="$((1000000 + GITHUB_RUN_NUMBER))" \
-            -PupdateManifestUrl="https://jicun.netlify.app/downloads/latest.json"
+            -PupdateManifestUrl="${LIVE_MANIFEST_URL}"
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk "jicun-${RELEASE_VERSION#v}.apk"
+
+      # 发版说明从 VERSION_HISTORY.md 里对应版本的条目取，不再写死在 workflow 里。
+      # 此前这段文案从 v1.5.2 起一字未改，1.5.5 的用户在更新弹窗里看到的还是 1.5.2 的说明。
+      # 取不到条目时退化成一句通用文案并给 warning：说明缺失不该拦住正式发布。
+      - name: Extract the release notes
+        id: release_notes
+        run: |
+          set -euo pipefail
+          V="${RELEASE_VERSION#v}"
+          FILE="$RUNNER_TEMP/release-notes.md"
+          HEADING="## v${V}"
+          # 用 index/substr 而不是正则：mawk 的 ERE 不支持交替，
+          # 同时保证 "## v1.5.5" 不会误配到 "## v1.5.50"。
+          awk -v head="$HEADING" '
+            index($0, head) == 1 && (length($0) == length(head) || substr($0, length(head) + 1, 1) == " ") { found = 1; next }
+            found && substr($0, 1, 3) == "## " { exit }
+            found { n++; buf[n] = $0 }
+            END {
+              # 段落首尾的空行不要带进 Release 说明。
+              first = 0; last = 0
+              for (i = 1; i <= n; i++) if (buf[i] ~ /[^[:space:]]/) { if (first == 0) first = i; last = i }
+              for (i = first; i <= last; i++) print buf[i]
+            }
+          ' VERSION_HISTORY.md > "$FILE"
+          if ! grep -q '[^[:space:]]' "$FILE"; then
+            echo "::warning::VERSION_HISTORY.md 里没有 ${HEADING} 的条目，Release 说明退化为通用文案。下次发版前请先补上该条目。"
+            printf '本次版本包含功能改进和问题修复。\n' > "$FILE"
+          fi
+          printf '\n完整变更记录：https://github.com/%s/blob/main/VERSION_HISTORY.md\n' "${GITHUB_REPOSITORY}" >> "$FILE"
+          {
+            echo "### 本次 Release 说明"
+            echo ""
+            cat "$FILE"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "path=${FILE}" >> "$GITHUB_OUTPUT"
 
       # GitHub 发布放在镜像之前：镜像那几步万一失败，正式包也已经发出去了，
       # 失败只会表现为"GitHub 成功、镜像没同步"，看得见、也不丢东西。
@@ -108,11 +150,7 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: 暨存 ${{ env.RELEASE_VERSION }}
-          body: |
-            本次更新：
-            - App 更新检查改用 Netlify 国内镜像清单，GitHub Release 保留为备用源。
-            - 更新弹窗展示完整功能说明，长内容可滚动查看。
-            - 修复成果组件刷新和系统选择器预览问题。
+          body_path: ${{ steps.release_notes.outputs.path }}
           files: jicun-*.apk
 
       # ---------- 国内镜像（Gitee）----------
@@ -266,9 +304,76 @@ jobs:
           git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
             commit -q -m "chore: sync APK from 暨存 ${RELEASE_VERSION#v}"
           git -C "$WORK" -c "http.extraheader=Authorization: Basic ${AUTH}" push -q origin HEAD
-          echo "已同步到落地页：public/downloads/jicun.apk（Netlify 会自动重新部署）"
+          echo "已同步到落地页：public/downloads/jicun.apk（Netlify 应会自动重新部署）"
 
-      # 一眼看清四个分发点各自的成败。以前镜像失败会让 run 直接红掉、
+      # 站点若没接 Git 自动部署（或部署早就挂了），在命令行里推仓库是没用的 ——
+      # 只能靠 Netlify build hook 主动踢一次。没配 hook 就只警告，不拦住发布。
+      # v1.5.5 的事故正是这一段：仓库里是 1.5.5，线上站点停在 1.5.2，五天没人发现。
+      - name: Trigger the Netlify deploy
+        id: netlify_deploy
+        if: always() && steps.landing_apk.outcome == 'success'
+        run: |
+          if [ -z "${NETLIFY_DEPLOY_HOOK}" ]; then
+            echo "::warning::没有配置 NETLIFY_DEPLOY_HOOK。若线上站点不是自动部署，仓库更新了、用户端也不会变。"
+            exit 0
+          fi
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+            --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 10 \
+            "${NETLIFY_DEPLOY_HOOK}") || CODE="000"
+          echo "Netlify build hook 返回 HTTP ${CODE}"
+          if [ "$CODE" != "200" ] && [ "$CODE" != "201" ]; then
+            echo "::warning::Netlify build hook 返回 HTTP ${CODE}，构建可能没有被触发。"
+          fi
+
+      # 交付契约：决定用户能否更新的是线上那两个 URL，不是仓库里的文件。
+      # 只推仓库、不读线上，就会出现「流水线全绿、线上落后三个版本」这种事。
+      # 所以这里要求线上清单版本和线上 APK 字节数都对得上，对不上整个 run 变红 ——
+      # 让「发布成功」的定义从「我推了」改成「用户能拿到」。
+      - name: Verify the live update endpoint
+        id: live_endpoint
+        if: always() && steps.landing_apk.outcome == 'success'
+        run: |
+          set -uo pipefail
+          V="${RELEASE_VERSION#v}"
+          APK="jicun-${V}.apk"
+          LOCAL_SIZE=$(stat -c %s "$APK")
+          MANIFEST_OK=0
+          APK_OK=0
+          CT=""
+          LIVE_SIZE=""
+          # Netlify 的 CDN 有传播延迟，最多等 12 x 15 = 180 秒。
+          for attempt in $(seq 1 12); do
+            sleep 15
+            curl -sSL -D "$RUNNER_TEMP/live.hdr" -o "$RUNNER_TEMP/live.body" \
+              --connect-timeout 30 --max-time 60 "${LIVE_MANIFEST_URL}" || true
+            BODY=$(cat "$RUNNER_TEMP/live.body" 2>/dev/null || echo "")
+            CT=$(grep -i '^content-type:' "$RUNNER_TEMP/live.hdr" 2>/dev/null \
+              | tail -1 | tr -d '\r' | sed 's/^[^:]*:[[:space:]]*//')
+            if echo "$BODY" | grep -q "\"${V}\""; then MANIFEST_OK=1; else MANIFEST_OK=0; fi
+            LIVE_SIZE=$(curl -sIL --connect-timeout 30 --max-time 60 "${LIVE_APK_URL}" 2>/dev/null \
+              | grep -i '^content-length:' | tail -1 | tr -d '\r' | sed 's/^[^:]*:[[:space:]]*//')
+            if [ -n "$LIVE_SIZE" ] && [ "$LIVE_SIZE" = "$LOCAL_SIZE" ]; then APK_OK=1; else APK_OK=0; fi
+            echo "第 ${attempt} 次：清单=${MANIFEST_OK} 安装包=${APK_OK}（线上 ${LIVE_SIZE:-读不到} / 本地 ${LOCAL_SIZE}）Content-Type=${CT}"
+            if [ "$MANIFEST_OK" = "1" ] && [ "$APK_OK" = "1" ]; then break; fi
+          done
+
+          FAIL=0
+          if [ "$MANIFEST_OK" != "1" ]; then
+            echo "::error::线上更新清单 ${LIVE_MANIFEST_URL} 三分钟后仍读不到 ${V}，用户检查更新读到的还是旧版本。请确认站点已重新部署（Netlify 是否连着本仓库 / build hook 是否有效）。"
+            FAIL=1
+          fi
+          if [ "$APK_OK" != "1" ]; then
+            echo "::error::线上安装包 ${LIVE_APK_URL} 的字节数与本次发布的 ${APK} 不一致，产品页下载到的可能不是 ${V}。"
+            FAIL=1
+          fi
+          case "$CT" in
+            *application/json*) ;;
+            *) echo "::warning::线上清单的 Content-Type 是「${CT}」，不是 application/json。App 不受影响，但浏览器会把清单当成文件下载；应给 /downloads/*.json 单独声明响应头。" ;;
+          esac
+          if [ "$FAIL" != "0" ]; then exit 1; fi
+          echo "线上端点校验通过：${LIVE_MANIFEST_URL} 已是 ${V}，${LIVE_APK_URL} 字节数一致"
+
+      # 一眼看清全部分发点各自的成败。以前镜像失败会让 run 直接红掉、
       # 后面的跳过点只在折叠的日志里躺着，得点开才看得见。
       - name: Summarise the release
         if: always()
@@ -277,6 +382,8 @@ jobs:
           ATTACHMENT: ${{ steps.mirror_attachment.outcome }}
           MANIFEST: ${{ steps.mirror_manifest.outcome }}
           LANDING: ${{ steps.landing_apk.outcome }}
+          NETLIFY_REL: ${{ steps.netlify_deploy.outcome }}
+          LIVE: ${{ steps.live_endpoint.outcome }}
         run: |
           V="${RELEASE_VERSION#v}"
           label() { case "$1" in success) echo "已同步";; skipped) echo "跳过";; *) echo "失败";; esac; }
@@ -289,6 +396,12 @@ jobs:
             echo "| Gitee 镜像附件 | $(label "$ATTACHMENT") |"
             echo "| Gitee 镜像清单 | $(label "$MANIFEST") |"
             echo "| 落地页安装包 | $(label "$LANDING") |"
+            echo "| Netlify 部署触发 | $(label "$NETLIFY_REL") |"
+            echo "| **线上更新端点（用户实际读到的）** | $(label "$LIVE") |"
             echo ""
-            echo "镜像未同步时，应用仍能通过 GitHub 源检查到 ${V}，只是国内下载会慢。"
+            echo "**只有「线上更新端点」是已同步，用户才真的能拿到 ${V}。**"
+            echo ""
+            echo "- 线上端点失败：线上清单仍是旧版本，国内用户检查更新会读到旧版本；GitHub 可达时仍可更新，只是慢。"
+            echo "- 落地页安装包跳过：本次没有配 LANDING_TOKEN，站点靠落地页仓库每天 09:17 的兜底 workflow 同步。"
+            echo "- Gitee 镜像已停用（Netlify 承担国内源），两步固定为「跳过」。"
           } >> "$GITHUB_STEP_SUMMARY"
