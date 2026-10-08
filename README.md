@@ -129,6 +129,7 @@ docs/adr/                  # 架构决策记录
   - 为什么需要：仓库里有新文件 ≠ 用户读得到新文件。**v1.5.5 发布后落地页仓库里是 1.5.5，线上却一直是 1.5.2，持续五天，而流水线全绿** —— "推成功了"和"用户拿到了"之间没有任何人校验。
 - **线上端点校验（自动，必过）**：发版最后一步回读 `LIVE_MANIFEST_URL`（默认 `https://jicun.netlify.app/downloads/latest.json`）与 `LIVE_APK_URL`，要求**线上清单版本 = 本次版本**且**线上 APK 字节数 = 本地刚构建的 APK**，最多等 180 秒，对不上就让整个 run 变红。`Content-Type` 不对只给 warning（App 用 `HttpURLConnection`，不看 Content-Type；但浏览器会把清单当成文件下载）。
   - 地址可用 Variables `LIVE_MANIFEST_URL` / `LIVE_APK_URL` 覆盖，二者与编译进包的 `-PupdateManifestUrl` **同源**，不会各写一份。
+  - **这一步红了怎么查**：先去站点的 Deploys 面板，看这次推送对应的那条 Production 部署是成功、失败、还是 **Skipped**。Skipped 表示部署根本没跑 —— 常见于 Netlify 额度/计费用尽（2026-10-08 就是这个原因：站点停在最后一次成功部署上，而流水线全绿）。此时改配置、加 build hook 都没用，得先恢复额度或换托管。
 
   > ⚠️ **"跳过"是静默的**：流水线整体仍显示 `success`、正式包照常发出，只有产品页会停在旧包。跳过 `LANDING_TOKEN` 时不会做端点校验，只能靠落地页仓库的每日兜底。**发版后请直接看 run summary 那张表：只有「线上更新端点」是"已同步"，用户才真的能更新。**
   >

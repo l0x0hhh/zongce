@@ -359,7 +359,7 @@ jobs:
 
           FAIL=0
           if [ "$MANIFEST_OK" != "1" ]; then
-            echo "::error::线上更新清单 ${LIVE_MANIFEST_URL} 三分钟后仍读不到 ${V}，用户检查更新读到的还是旧版本。请确认站点已重新部署（Netlify 是否连着本仓库 / build hook 是否有效）。"
+            echo "::error::线上更新清单 ${LIVE_MANIFEST_URL} 三分钟后仍读不到 ${V}，用户检查更新读到的还是旧版本。常见原因：站点的**生产部署被跳过** —— 仓库收到了推送、Deploys 里却是一条 Skipped（Netlify 在额度/计费用尽时会这样，2026-10-08 就是这么发生的）。请到站点的 Deploys 面板确认本次推送有没有真的部署成功。"
             FAIL=1
           fi
           if [ "$APK_OK" != "1" ]; then

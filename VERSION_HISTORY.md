@@ -30,7 +30,10 @@
   3. 落地页 `sync-apk.yml` 的每日兜底补上同一套校验：线上不对就触发部署再回读，修不好就报错（兜底不能只兜一半）。
   4. `release.yml` 的 Release 说明改为从本文件 `## v<版本>` 段落抽取，不再写死（此前那段文案从 v1.5.2 起一字未改，1.5.5 的用户在更新弹窗里看到的还是 1.5.2 的说明）。
   5. `LIVE_MANIFEST_URL` / `LIVE_APK_URL` 在 workflow 里只定义一次，**编译进包的 `-PupdateManifestUrl` 与校验读的是同一个地址**。
-- **仍需人工确认（代码之外）**：Netlify 站点是否确实连着 `l0x0hhh/JICUN` 自动部署。若没有，请配 `NETLIFY_DEPLOY_HOOK`（见 `README.md` 的「开发与发布」）。
+- **根因已确认（2026-10-08，Netlify 后台）**：站点**确实连着** `l0x0hhh/JICUN` 自动部署 —— 推送到达后 Activity 里会新增一条 Production 部署记录，但随即被标成 **Skipped**；站点因此停在最后一次成功的部署（**Published on Oct 3** = v1.5.2）。Netlify 顶部横幅写明：账号运行在 operational credits 上，**生产部署与 Agent Runner 已暂停**，需升级团队或等下一个计费周期恢复。
+  - 也就是说：**代码、仓库、站点连接都没问题，卡在 Netlify 的额度/计费**。额度恢复之前 `NETLIFY_DEPLOY_HOOK` 同样无效（它触发的还是生产部署）。
+  - 恢复后的动作：在 Netlify 的 Deploys 面板 **Retry deploy**（那条 Skipped 不会自动补跑），或配好 `NETLIFY_DEPLOY_HOOK` 后手动跑一次落地页的 `Sync APK` workflow —— 它会发现线上端点过期并主动触发部署。
+  - 若考虑换托管：国内镜像只需要一个能托管静态文件、并按 `Content-Type: application/vnd.android.package-archive` 返回 `.apk` 的地方。换域名要同步改 `LIVE_MANIFEST_URL` 与 `-PupdateManifestUrl`；**已装机用户仍会先查 Netlify**，但 App 并发查两源取版本更高者，所以只要新源更新就不会被旧源卡住。
 
 ## v1.5.3 更新（组件独立学年与删除同步）
 
@@ -256,7 +259,8 @@
 - [x] **JVM 单元测试（v1.3.6 批次）：60 个用例全部通过**（`AcademicYearTest` 8 + `FileNameRuleTest` 3 + `ExportCheckTest` 3 + `ExportPlanTest` 17 + `UpdateCheckerTest` 12 + `UpdateThrottleBoundaryTest` 9 + `UpdateThrottleTest` 8，`failures=0 errors=0 skipped=0`），命令同上，结果 `BUILD SUCCESSFUL in 2m 29s`、`26 actionable tasks: 7 executed, 19 up-to-date`（`7 executed` 说明是真跑，非 UP-TO-DATE 假绿）。注：这 60 条覆盖的是纯逻辑，**跨进程同步不在覆盖范围内，需真机验证**。
 - [x] **正式 Release 已发布（2026-09-23）**：`暨存 v1.3.6` —— https://github.com/l0x0hhh/zongce/releases/tag/v1.3.6 ，资产 `jicun-1.3.6.apk`（13,600,034 字节），Release 流水线 run `35843994511` **14 步全绿**（含 Gitee 镜像上传与清单发布）。线上包已下载回来复验：`aapt2 dump badging` 得 `com.zongce.app` / **versionCode `1000012`（> v1.3.5 的 `1000011`，可直接覆盖升级）** / versionName `1.3.6` / label 暨存；`apksigner verify` 通过，证书 SHA-256 `7a1eeb88…` 与本机 keystore 一致。Gitee 镜像 `latest.json` 已同步 `1.3.6`（apkUrl 指向镜像同名附件）；落地页 `https://jicun.netlify.app/downloads/jicun.apk` 已同步为同一体积、`Content-Type: application/vnd.android.package-archive` 正确。**注：v1.3.5 那次 Release 的 GitHub 附件上传失败（assets 为空）确属偶发，本次正常。**
 - [x] **线上交付端点实测（2026-10-08）**：用 `curl -D -` 实测线上 `latest.json` 与 `jicun.apk`，确认线上停在 `1.5.2`、仓库已是 `1.5.5`；并逐条核对了 v1.5.5 Release run `37407521856` 的步骤（Gitee 两步 skipped，其余 success）。据此在 `release.yml` 与落地页 `sync-apk.yml` 加入线上端点校验（见上文「交付事故与修复」）。
-- [ ] **线上端点仍未恢复**：截至 2026-10-08，`https://jicun.netlify.app/downloads/latest.json` 依旧是 `1.5.2`。需先确认 Netlify 是否连着落地页仓库；配好 `NETLIFY_DEPLOY_HOOK` 后重跑一次即可（**不必重新打 tag** —— 可对已有 tag 手动触发 Release，或直接跑落地页的兜底 workflow）。
+- [ ] **线上端点仍未恢复（阻塞在 Netlify 计费）**：截至 2026-10-08，`https://jicun.netlify.app/downloads/latest.json` 依旧是 `1.5.2`。根因已确认是 **Netlify 生产部署被暂停（额度/计费）**，不是配置问题 —— 见上节。额度恢复后在 Deploys 面板 Retry 一次即可，**不必重新打 tag**。
+- [ ] **额度恢复前，每次发版的 Release run 都会红**：这是刻意行为 —— 新加的 `Verify the live update endpoint` 会把"用户拿不到新版本"如实报出来，而不是像 v1.5.5 那样全绿五天。GitHub Release 与正式 APK 仍照常发出，不受影响。
 - [ ] 真机或模拟器功能验证（含成果小组件学年同步：App 内选完学年回桌面组件是否立刻刷新，以及固定摘要渲染、拉伸、桌面箭头切学年）。
 - [ ] **本地整包打包未跑通（环境问题，非代码问题）**：`mergeDebugGlobalSynthetics` 与 `mergeExtDexRelease` 两次分别失败，错误同为 `Could not move temporary workspace … .gradle-user/caches/transforms-4/<hash>-<uuid>` —— Windows 文件系统层的原子重命名被卡住，`--max-workers=1` 也规避不掉（同一根因在 v1.3.4 会话中已出现过一次）。已清理缓存里残留的临时目录后重跑。**dex 合并与 release 变体的最终打包以 CI（Linux）为准。**
 
