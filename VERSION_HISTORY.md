@@ -12,8 +12,13 @@
 | Android 应用版本 | 线上 `versionName 1.5.5`，`versionCode = 1000000 + 构建号`；本地默认仍是 `versionName 1.5.5` / `versionCode 2`，**装不上线上包，别拿本地包做真机测试** |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | v1.5.5 已提交并打 tag；工作区另有两处**未提交**的组件改动（`AchievementWidget.kt` 学年箭头改成按钮样式、`WidgetYearActionCallback.kt` 连点 180ms 防抖重绘），以及未入库的 `app/build-alex/` 实验构建目录 |
+| 工作区状态 | v1.5.5 已提交并打 tag；学年箭头按钮样式已纳入本次提交；`WidgetYearActionCallback.kt` 连点 180ms 防抖重绘仍未提交，待处理并发隐患；`app/build-alex/` 为未入库的实验构建目录 |
 | 线上交付状态 | ⚠️ **`https://jicun.netlify.app/downloads/latest.json` 仍停在 `1.5.2`**（落地页仓库里已经是 `1.5.5`）—— 站点没随仓库更新，详见下节 |
+
+## 未发布变更（2026-10-09）
+
+- 成果组件的学年箭头改为 32dp 圆角按钮，居中显示箭头，并区分可用和禁用状态的背景与文字颜色。
+- 学年标题行增加垂直间距；本次仅提交样式，不包含连点防抖刷新逻辑，也不修改已发布版本号。
 
 ## 交付事故与修复：线上更新端点停在旧版本（2026-10-08）
 

@@ -1,4 +1,4 @@
-// 桌面小组件之二：我的成果（只读）。
+// 桌面小组件之二：我的成果（只读），学年箭头使用居中的圆角按钮样式。
 //
 // 布局按 PRD §4.2 线框图（4×4 / 250×250dp）：标题行 → 统计行 → 分隔线 → 列表区 → 底部查看全部。
 // 组件只读 Room，不写 award_records / award_photos，唯一允许写的是学年偏好（T03 的箭头）。
@@ -194,7 +194,9 @@ private fun HeaderRow(
     val previous = snapshot.years.indexOf(snapshot.year) - 1
     val next = snapshot.years.indexOf(snapshot.year) + 1
     Row(
-        modifier = GlanceModifier.fillMaxWidth(),
+        modifier = GlanceModifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         YearArrow(
@@ -222,17 +224,24 @@ private fun HeaderRow(
 
 @Composable
 private fun YearArrow(label: String, enabled: Boolean, action: Action?) {
-    val modifier = GlanceModifier.size(28.dp)
-    Text(
-        text = label,
-        modifier = if (enabled && action != null) modifier.clickable(action) else modifier,
-        style = TextStyle(
-            color = ColorProvider(if (enabled) WidgetPalette.Ink else WidgetPalette.Disabled),
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = androidx.glance.text.TextAlign.Center
+    val base = GlanceModifier
+        .size(32.dp)
+        .background(ColorProvider(if (enabled) WidgetPalette.StatTile else WidgetPalette.Divider))
+        .cornerRadius(10.dp)
+    Box(
+        modifier = if (enabled && action != null) base.clickable(action) else base,
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = TextStyle(
+                color = ColorProvider(if (enabled) WidgetPalette.Primary else WidgetPalette.Disabled),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.glance.text.TextAlign.Center
+            )
         )
-    )
+    }
 }
 
 private fun yearAction(delta: Int): Action =
