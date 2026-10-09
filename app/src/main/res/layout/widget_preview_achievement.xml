@@ -1,107 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 我的成果组件在系统选择器中的静态预览，布局与运行时 Glance 内容保持一致。 -->
+<!-- 学年选择版成果组件预览：48dp 标题、弹性列表、48dp 统计与查看全部入口。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:layout_width="250dp"
-    android:layout_height="180dp"
+    android:layout_width="250dp" android:layout_height="180dp"
     android:background="@drawable/widget_preview_bg"
-    android:orientation="vertical"
-    android:padding="12dp"
+    android:orientation="vertical" android:padding="12dp"
     tools:ignore="HardcodedText,UseCompoundDrawables">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:text="‹   2025-2026   ›"
-        android:textColor="#FF1B2430"
-        android:textSize="18sp"
-        android:textStyle="bold" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:layout_marginTop="6dp"
-        android:background="#FFF1F4F8"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="12dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="3 条成果"
-            android:textColor="#FF18202B"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="覆盖 3 育"
-            android:textColor="#FF6B7280"
-            android:textSize="11sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
+        android:background="@drawable/widget_achievement_control_bg"
+        android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="12dp">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:ellipsize="end" android:maxLines="1" android:text="2025-2026 学年"
+            android:textColor="#FF1B2430" android:textSize="16sp" android:textStyle="bold" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/achievement_widget_expand" android:textColor="#FF2D5F9A" android:textSize="12sp" />
     </LinearLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="6dp"
-        android:background="#FFE2E7ED" />
+    <!-- RemoteViews 不支持普通 View，用允许加载的 FrameLayout 渲染分隔线。 -->
+    <FrameLayout android:layout_width="match_parent" android:layout_height="1dp"
+        android:layout_marginTop="4dp" android:background="#FFE6EBF1" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="2dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="校级优秀学生"
-            android:textColor="#FF18202B"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="智育 · 2026-05-20 · 一等奖"
-            android:textColor="#FF6B7280"
-            android:textSize="11sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="大学生创新创业大赛"
-            android:textColor="#FF18202B"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="实践 · 2026-04-12 · 金奖"
-            android:textColor="#FF6B7280"
-            android:textSize="11sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:gravity="center_vertical" android:orientation="vertical">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:ellipsize="end" android:maxLines="1" android:text="校级优秀学生"
+            android:textColor="#FF1B2430" android:textSize="13sp" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:ellipsize="end" android:maxLines="1" android:text="智育 · 2026-05-20 · 一等奖"
+            android:textColor="#FF5D6875" android:textSize="11sp" />
     </LinearLayout>
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text="共 3 条 · 查看全部"
-        android:textColor="#FF2D5F9A"
-        android:textSize="11sp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:layout_marginTop="4dp"
+        android:background="@drawable/widget_achievement_control_bg"
+        android:gravity="center_vertical" android:orientation="horizontal" android:paddingHorizontal="8dp">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:ellipsize="end" android:maxLines="1" android:text="3 条成果 · 覆盖 3 育"
+            android:textColor="#FF5D6875" android:textSize="12sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="@string/achievement_widget_view_all" android:textColor="#FF2D5F9A" android:textSize="12sp" />
+    </LinearLayout>
 </LinearLayout>

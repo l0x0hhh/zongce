@@ -1,4 +1,4 @@
-// 组件箭头动作：在桌面直接切换组件学年，并刷新当前成果快照。
+// 组件学年选择：用明确学年替代增减量，写入实例状态后立即在回调内请求刷新。
 package com.zongce.app.widget
 
 import android.content.Context
@@ -6,17 +6,6 @@ import androidx.glance.GlanceId
 import androidx.glance.action.ActionParameters
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.state.updateAppWidgetState
-import androidx.glance.state.PreferencesGlanceStateDefinition
-import com.zongce.app.data.WidgetYearStore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.job
-import java.util.concurrent.ConcurrentHashMap
 
 class WidgetYearActionCallback : ActionCallback {
     override suspend fun onAction(
@@ -24,44 +13,30 @@ class WidgetYearActionCallback : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        val delta = parameters[DELTA_KEY] ?: return
         val app = context.applicationContext
-        val cached = AchievementWidgetCache.read(app)
-            ?: AchievementWidgetCache.rebuild(app)
-        if (cached.years.isEmpty()) return
-        var targetYear: String? = null
-        updateAppWidgetState(app, glanceId) { preferences ->
-            val current = preferences[AchievementWidgetState.selectedYear]
-                ?.takeIf { it in cached.years }
-                ?: WidgetYearStore.current(app, cached.years).takeIf { it in cached.years }
-                ?: cached.years.first()
-            val currentIndex = cached.years.indexOf(current)
-            val targetIndex = (currentIndex + delta).coerceIn(0, cached.years.lastIndex)
-            targetYear = cached.years[targetIndex]
-            preferences[AchievementWidgetState.selectedYear] = targetYear!!
+        val requestedYear = parameters[YEAR_KEY]
+        val pickerVisible = parameters[PICKER_VISIBLE_KEY]
+        if (requestedYear == null && pickerVisible == null) return
+
+        // 展开/收起只写 UI 状态；选学年用缓存校验，避免正常点击重复查询 Room。
+        val validYear = requestedYear?.let { year ->
+            val cached = AchievementWidgetCache.read(app) ?: AchievementWidgetCache.rebuild(app)
+            year.takeIf { it in cached.years }
         }
-        // 连点时只保留最后一次重绘请求；状态已立即写入，停手后再提交一次 RemoteViews。
-        scheduleRefresh(app, glanceId)
+        updateAppWidgetState(app, glanceId) { preferences ->
+            if (validYear != null) {
+                preferences[AchievementWidgetState.selectedYear] = validYear
+                preferences[AchievementWidgetState.yearPickerVisible] = false
+            } else if (pickerVisible != null) {
+                preferences[AchievementWidgetState.yearPickerVisible] = pickerVisible
+            }
+        }
+        // 不启动脱离回调生命周期的延迟任务，状态落盘后直接提交本实例的更新请求。
+        WidgetRefresh.refresh(app, glanceId)
     }
 
     companion object {
-        val DELTA_KEY = ActionParameters.Key<Int>("widget_year_delta")
-        private const val REFRESH_DEBOUNCE_MS = 180L
-        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        private val pendingRefreshes = ConcurrentHashMap<String, Job>()
-
-        private fun scheduleRefresh(context: Context, glanceId: GlanceId) {
-            val key = glanceId.toString()
-            pendingRefreshes.remove(key)?.cancel()
-            pendingRefreshes[key] = scope.launch {
-                delay(REFRESH_DEBOUNCE_MS)
-                try {
-                    WidgetRefresh.refresh(context, glanceId)
-                } finally {
-                    // 仅移除当前任务，避免被已取消的旧任务删掉新任务。
-                    pendingRefreshes.remove(key, currentCoroutineContext().job)
-                }
-            }
-        }
+        val YEAR_KEY = ActionParameters.Key<String>("widget_selected_year")
+        val PICKER_VISIBLE_KEY = ActionParameters.Key<Boolean>("widget_year_picker_visible")
     }
 }

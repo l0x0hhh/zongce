@@ -1,13 +1,15 @@
-// 桌面小组件之二：我的成果（只读），学年箭头使用居中的圆角按钮样式。
+// 我的成果桌面组件：点击学年直接选择，统计与查看全部合并为底部入口以保留列表空间。
 //
-// 布局按 PRD §4.2 线框图（4×4 / 250×250dp）：标题行 → 统计行 → 分隔线 → 列表区 → 底部查看全部。
-// 组件只读 Room，不写 award_records / award_photos，唯一允许写的是学年偏好（T03 的箭头）。
+// 标题与底部入口提供 48dp 点击区，列表和选择器共用剩余空间。
+// 成果数据只读；学年和选择器状态保存在各组件自己的 Glance 状态里。
 package com.zongce.app.widget
 
 import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.datastore.preferences.core.Preferences
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -16,6 +18,7 @@ import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.LocalContext
 import androidx.glance.LocalSize
+import androidx.glance.currentState
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.PreviewSizeMode
@@ -74,7 +77,10 @@ class AchievementWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val snapshot = AchievementWidgetLoader.load(context, id)
         provideContent {
-            AchievementWidgetContent(snapshot = snapshot)
+            // 活跃 Glance 会话会重组而不重跑 provideGlance，必须读取实时实例状态。
+            val state = currentState<Preferences>()
+            val current = remember(state, snapshot) { AchievementWidgetLoader.fromCache(context, state, snapshot) }
+            AchievementWidgetContent(snapshot = current)
         }
     }
 
@@ -129,15 +135,15 @@ class AchievementWidget : GlanceAppWidget() {
         /** L3 静态降级用的行高（§3.4 公式）。 */
         internal const val ROW_HEIGHT_DP = 44f
 
-        /** L3 静态降级时，列表区之外被占用的高度：padding 12×2 + 标题 24 + 6 + 统计 44 + 6 + 分隔线 1 + 底部行 22。 */
-        internal const val CHROME_HEIGHT_DP = 24f + 24f + 6f + 44f + 6f + 1f + 22f
+        /** 静态降级时，预留外边距、48dp 标题、分隔线和 48dp 底部入口。 */
+        internal const val CHROME_HEIGHT_DP = 24f + 48f + 4f + 1f + 4f + 48f
     }
 }
 
 @Composable
 private fun AchievementWidgetContent(snapshot: AchievementWidgetSnapshot) {
     val context = LocalContext.current
-    val openAchievement = openAchievementAction(context)
+    val openAchievement = openAchievementAction(context, snapshot.year)
 
     Column(
         modifier = GlanceModifier
@@ -147,9 +153,7 @@ private fun AchievementWidgetContent(snapshot: AchievementWidgetSnapshot) {
             .padding(12.dp)
     ) {
         HeaderRow(snapshot = snapshot)
-        Spacer(GlanceModifier.height(6.dp))
-        StatsRow(snapshot = snapshot, context = context)
-        Spacer(GlanceModifier.height(6.dp))
+        Spacer(GlanceModifier.height(4.dp))
         Box(
             modifier = GlanceModifier
                 .fillMaxWidth()
@@ -157,168 +161,132 @@ private fun AchievementWidgetContent(snapshot: AchievementWidgetSnapshot) {
                 .background(ColorProvider(WidgetPalette.Divider))
         ) {}
 
-        if (snapshot.rows.isEmpty()) {
-            EmptyBody(context = context, snapshot = snapshot, onClick = openAchievement)
+        val bodyModifier = GlanceModifier.fillMaxWidth().defaultWeight()
+        if (snapshot.yearPickerVisible) {
+            YearPickerBody(snapshot = snapshot, context = context, modifier = bodyModifier)
+        } else if (snapshot.rows.isEmpty()) {
+            EmptyBody(context = context, snapshot = snapshot, onClick = openAchievement, modifier = bodyModifier)
         } else if (AchievementWidget.USE_LAZY_COLUMN) {
-            LazyListBody(snapshot = snapshot, context = context)
+            LazyListBody(snapshot = snapshot, context = context, modifier = bodyModifier)
         } else {
-            StaticListBody(snapshot = snapshot, context = context)
+            StaticListBody(snapshot = snapshot, context = context, modifier = bodyModifier)
         }
 
-        Spacer(GlanceModifier.height(4.dp))
-        Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .clickable(openAchievement),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = context.getString(
-                    R.string.achievement_widget_more,
-                    snapshot.recordCount
-                ),
-                style = TextStyle(
-                    color = ColorProvider(WidgetPalette.Primary),
-                    fontSize = 11.sp
-                )
-            )
+        if (!snapshot.yearPickerVisible) {
+            Spacer(GlanceModifier.height(4.dp))
+            SummaryRow(snapshot = snapshot, context = context, onClick = openAchievement)
         }
     }
 }
 
-/** 标题行：组件独立学年，左右箭头直接在桌面切换。 */
+/** 标题整行可点：进入或收起组件内的学年列表，避免小箭头的误触和连续翻找。 */
 @Composable
 private fun HeaderRow(
     snapshot: AchievementWidgetSnapshot
 ) {
-    val previous = snapshot.years.indexOf(snapshot.year) - 1
-    val next = snapshot.years.indexOf(snapshot.year) + 1
+    val context = LocalContext.current
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .height(48.dp)
+            .background(ColorProvider(WidgetPalette.StatTile))
+            .cornerRadius(12.dp)
+            .clickable(pickerAction(!snapshot.yearPickerVisible))
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        YearArrow(
-            label = "‹",
-            enabled = previous >= 0,
-            action = previous.takeIf { it >= 0 }?.let { yearAction(-1) }
-        )
         Text(
-            text = snapshot.year,
+            text = if (snapshot.yearPickerVisible) context.getString(R.string.achievement_widget_choose_year)
+                else context.getString(R.string.achievement_widget_year_label, snapshot.year),
             modifier = GlanceModifier.defaultWeight(),
             style = TextStyle(
                 color = ColorProvider(WidgetPalette.Ink),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = androidx.glance.text.TextAlign.Center
-            )
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            maxLines = 1
         )
-        YearArrow(
-            label = "›",
-            enabled = next < snapshot.years.size,
-            action = next.takeIf { it < snapshot.years.size }?.let { yearAction(1) }
+        Text(
+            text = context.getString(if (snapshot.yearPickerVisible) R.string.achievement_widget_collapse else R.string.achievement_widget_expand),
+            style = TextStyle(color = ColorProvider(WidgetPalette.Primary), fontSize = 12.sp)
         )
     }
 }
 
 @Composable
-private fun YearArrow(label: String, enabled: Boolean, action: Action?) {
-    val base = GlanceModifier
-        .size(32.dp)
-        .background(ColorProvider(if (enabled) WidgetPalette.StatTile else WidgetPalette.Divider))
-        .cornerRadius(10.dp)
-    Box(
-        modifier = if (enabled && action != null) base.clickable(action) else base,
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style = TextStyle(
-                color = ColorProvider(if (enabled) WidgetPalette.Primary else WidgetPalette.Disabled),
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = androidx.glance.text.TextAlign.Center
-            )
-        )
+private fun YearPickerBody(snapshot: AchievementWidgetSnapshot, context: Context, modifier: GlanceModifier) {
+    LazyColumn(modifier = modifier) {
+        items(items = snapshot.years, itemId = { it.substringBefore('-').toLong() }) { year ->
+            val selected = year == snapshot.year
+            Row(
+                modifier = GlanceModifier.fillMaxWidth().height(48.dp)
+                    .background(ColorProvider(if (selected) WidgetPalette.StatTile else WidgetPalette.Card))
+                    .cornerRadius(10.dp).clickable(yearAction(year)).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = year,
+                    modifier = GlanceModifier.defaultWeight(),
+                    style = TextStyle(
+                        color = ColorProvider(WidgetPalette.Ink),
+                        fontSize = 15.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                    )
+                )
+                if (selected) {
+                    Text(
+                        text = context.getString(R.string.achievement_widget_selected),
+                        style = TextStyle(color = ColorProvider(WidgetPalette.Primary), fontSize = 12.sp)
+                    )
+                }
+            }
+        }
     }
 }
 
-private fun yearAction(delta: Int): Action =
+private fun yearAction(year: String): Action =
     actionRunCallback<WidgetYearActionCallback>(
-        actionParametersOf(WidgetYearActionCallback.DELTA_KEY to delta)
+        actionParametersOf(WidgetYearActionCallback.YEAR_KEY to year)
     )
 
-/** 统计行：「12 条成果 │ 覆盖 4 育」。空学年也保留这一行（PRD 空态口径）。 */
+private fun pickerAction(visible: Boolean): Action =
+    actionRunCallback<WidgetYearActionCallback>(
+        actionParametersOf(WidgetYearActionCallback.PICKER_VISIBLE_KEY to visible)
+    )
+
+/** 统计与查看全部合并为一个足够大的点击区，小尺寸下也给成果列表留出完整一行。 */
 @Composable
-private fun StatsRow(snapshot: AchievementWidgetSnapshot, context: Context) {
+private fun SummaryRow(snapshot: AchievementWidgetSnapshot, context: Context, onClick: Action) {
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(48.dp)
             .background(ColorProvider(WidgetPalette.StatTile))
-            .cornerRadius(12.dp),
+            .cornerRadius(12.dp)
+            .clickable(onClick)
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        StatCell(
-            leading = snapshot.recordCount.toString(),
-            trailing = context.getString(R.string.achievement_widget_stat_count)
-        )
-        StatCell(
-            leading = context.getString(R.string.achievement_widget_stat_cover_prefix),
-            number = snapshot.coveredWuyu.toString(),
-            trailing = context.getString(R.string.achievement_widget_stat_cover_suffix)
-        )
-    }
-}
-
-@Composable
-private fun StatCell(leading: String, trailing: String, number: String? = null) {
-    Row(
-        modifier = GlanceModifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        if (number == null) {
-            BigNumber(leading)
-        } else {
-            Text(
-                text = leading,
-                style = TextStyle(
-                    color = ColorProvider(WidgetPalette.SecondaryText),
-                    fontSize = 11.sp
-                )
-            )
-            Spacer(GlanceModifier.width(3.dp))
-            BigNumber(number)
-        }
-        Spacer(GlanceModifier.width(3.dp))
         Text(
-            text = trailing,
+            text = context.getString(R.string.achievement_widget_summary, snapshot.recordCount, snapshot.coveredWuyu),
+            modifier = GlanceModifier.defaultWeight(),
             style = TextStyle(
                 color = ColorProvider(WidgetPalette.SecondaryText),
-                fontSize = 11.sp
-            )
+                fontSize = 12.sp
+            ),
+            maxLines = 1
+        )
+        Text(
+            text = context.getString(R.string.achievement_widget_view_all),
+            style = TextStyle(color = ColorProvider(WidgetPalette.Primary), fontSize = 12.sp)
         )
     }
-}
-
-@Composable
-private fun BigNumber(text: String) {
-    Text(
-        text = text,
-        style = TextStyle(
-            color = ColorProvider(WidgetPalette.Ink),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
-    )
 }
 
 /** L1 默认形态：Glance LazyColumn，最多 WIDGET_MAX_ROWS 条，itemId 用 record.id。 */
 @Composable
-private fun LazyListBody(snapshot: AchievementWidgetSnapshot, context: Context) {
-    LazyColumn(modifier = GlanceModifier.fillMaxWidth()) {
+private fun LazyListBody(snapshot: AchievementWidgetSnapshot, context: Context, modifier: GlanceModifier) {
+    LazyColumn(modifier = modifier) {
         items(
             items = snapshot.rows,
             itemId = { it.id }
@@ -333,14 +301,14 @@ private fun LazyListBody(snapshot: AchievementWidgetSnapshot, context: Context) 
  * 只有 USE_LAZY_COLUMN 被翻成 false 时才走到这里。
  */
 @Composable
-private fun StaticListBody(snapshot: AchievementWidgetSnapshot, context: Context) {
+private fun StaticListBody(snapshot: AchievementWidgetSnapshot, context: Context, modifier: GlanceModifier) {
     val listH = LocalSize.current.height.value -
         AchievementWidget.CHROME_HEIGHT_DP
     val rows = floor(listH / AchievementWidget.ROW_HEIGHT_DP)
         .toInt()
         .coerceAtLeast(1)
         .coerceAtMost(AchievementWidget.WIDGET_MAX_ROWS)
-    Column(modifier = GlanceModifier.fillMaxWidth()) {
+    Column(modifier = modifier) {
         snapshot.rows.take(rows).forEach { row ->
             RecordRow(row = row, onClick = openRecordAction(context, row.id))
         }
@@ -397,11 +365,11 @@ private fun RecordRow(row: AchievementWidgetRow, onClick: Action) {
 private fun EmptyBody(
     context: Context,
     snapshot: AchievementWidgetSnapshot,
-    onClick: androidx.glance.action.Action
+    onClick: androidx.glance.action.Action,
+    modifier: GlanceModifier
 ) {
     Column(
-        modifier = GlanceModifier
-            .fillMaxSize()
+        modifier = modifier
             .clickable(onClick)
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -432,10 +400,11 @@ private fun EmptyBody(
  * 点整块进成果页。零新增路由：复用 MainActivity 的 singleTop + action 协议，
  * 与现有快速录入组件完全同一套写法。
  */
-private fun openAchievementAction(context: Context): androidx.glance.action.Action =
+private fun openAchievementAction(context: Context, year: String): androidx.glance.action.Action =
     actionStartActivity(
         Intent(context, MainActivity::class.java)
             .setAction(WidgetActions.OPEN_ACHIEVEMENT)
+            .putExtra(WidgetActions.YEAR_EXTRA, year)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     )
 

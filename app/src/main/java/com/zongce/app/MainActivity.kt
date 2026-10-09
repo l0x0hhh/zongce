@@ -1,4 +1,4 @@
-// 应用导航、页面过渡、品牌主题和更新入口。
+// 应用导航与组件入口：组件传来的学年作为一次性请求交给成果页，兼容冷启动和已打开页面。
 // 三个 ViewModel（Record / Export / Update）在这里作为组合根接线，
 // 跨域的协作（如导出分享 → 删除询问闸门）只发生在这一层。
 package com.zongce.app
@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -63,13 +64,16 @@ private const val ROUTE_ENTRY = "entry/{recordId}"
 class MainActivity : ComponentActivity() {
     private var widgetAction by mutableStateOf<String?>(null)
     private var widgetRecordId by mutableStateOf<Long?>(null)
+    private var widgetYear by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        widgetAction = savedInstanceState?.getString("widgetAction")
-            ?: intent?.action?.takeIf(WidgetActions::isWidgetAction)
+        widgetAction = if (savedInstanceState != null) savedInstanceState.getString("widgetAction")
+            else intent?.action?.takeIf(WidgetActions::isWidgetAction)
         widgetRecordId = savedInstanceState?.getLong("widgetRecordId", 0L)?.takeIf { it != 0L }
             ?: intent?.getLongExtra(WidgetActions.RECORD_ID_EXTRA, 0L)?.takeIf { it != 0L }
+        widgetYear = if (savedInstanceState != null) savedInstanceState.getString("widgetYear")
+            else intent?.getStringExtra(WidgetActions.YEAR_EXTRA)
         enableEdgeToEdge()
         setContent {
             JicunTheme {
@@ -77,7 +81,8 @@ class MainActivity : ComponentActivity() {
                     App(
                         widgetAction = widgetAction,
                         widgetRecordId = widgetRecordId,
-                        onWidgetActionConsumed = { widgetAction = null }
+                        widgetYear = widgetYear,
+                        onWidgetActionConsumed = { widgetAction = null; widgetYear = null }
                     )
                 }
             }
@@ -89,11 +94,13 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         widgetAction = intent.action?.takeIf(WidgetActions::isWidgetAction)
         widgetRecordId = intent.getLongExtra(WidgetActions.RECORD_ID_EXTRA, 0L).takeIf { it != 0L }
+        widgetYear = intent.getStringExtra(WidgetActions.YEAR_EXTRA)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("widgetAction", widgetAction)
         outState.putLong("widgetRecordId", widgetRecordId ?: 0L)
+        outState.putString("widgetYear", widgetYear)
         super.onSaveInstanceState(outState)
     }
 }
@@ -105,6 +112,7 @@ private fun App(
     updateVm: UpdateViewModel = viewModel(),
     widgetAction: String? = null,
     widgetRecordId: Long? = null,
+    widgetYear: String? = null,
     onWidgetActionConsumed: () -> Unit = {}
 ) {
     val nav = rememberNavController()
@@ -113,6 +121,7 @@ private fun App(
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val context = LocalContext.current
+    var requestedAchievementYear by rememberSaveable { mutableStateOf<String?>(null) }
 
     val tabs = defaultAppTabs()
 
@@ -127,11 +136,14 @@ private fun App(
 
     // 小组件来的 action 分两路：录入类先切到拍摄页（实际动作由 CaptureScreen 触发），
     // 浏览类直接落到成果页。
-    androidx.compose.runtime.LaunchedEffect(widgetAction, widgetRecordId) {
+    androidx.compose.runtime.LaunchedEffect(widgetAction, widgetRecordId, widgetYear) {
         when (widgetAction) {
             WidgetActions.CAPTURE, WidgetActions.PICK_PHOTOS ->
                 if (currentRoute != ROUTE_CAPTURE) selectTab(ROUTE_CAPTURE)
-            WidgetActions.OPEN_ACHIEVEMENT -> selectTab(ROUTE_ACHIEVEMENT)
+            WidgetActions.OPEN_ACHIEVEMENT -> {
+                requestedAchievementYear = widgetYear
+                selectTab(ROUTE_ACHIEVEMENT)
+            }
             WidgetActions.OPEN_RECORD -> {
                 widgetRecordId?.takeIf { it != 0L }?.let { nav.navigate("entry/$it") }
             }
@@ -208,6 +220,10 @@ private fun App(
                 AchievementScreen(
                     items = items,
                     vm = recordVm,
+                    requestedYear = requestedAchievementYear,
+                    onYearRequestConsumed = { consumed ->
+                        if (requestedAchievementYear == consumed) requestedAchievementYear = null
+                    },
                     onOpenRecord = { id -> nav.navigate("entry/$id") },
                     onAddRecord = {
                         recordVm.clearPending()

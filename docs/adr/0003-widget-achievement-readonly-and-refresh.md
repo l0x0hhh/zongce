@@ -1,5 +1,8 @@
 # ADR-0003: 「我的成果」小组件——只读 Room、主动推送刷新、学年单一事实源
 
+> 2026-10-09 修订：组件使用实例独立学年、组件内直接选择并立即请求刷新；进入 App 时携带学年。
+> 本文的箭头与共享学年偏好条款由 [最新交互方案](../plans/2026-10-09-achievement-widget-year-picker.md) 替代。
+
 ## Status
 
 > **Accepted（生效中）**，对应 PRD：`docs/prd/prd-成果小组件-v1.5.0-2026-09-25.md`（v1.1）；实现方案：`docs/design/widget-achievement-design-v1.5.0-2026-09-25.md`。

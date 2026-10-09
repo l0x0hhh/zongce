@@ -1,4 +1,4 @@
-// 桌面小组件与主页面之间的轻量入口协议，不承载照片或业务数据。
+// 桌面小组件与主页面之间的入口协议：带上学年或记录 ID，保证点击后的浏览上下文一致。
 package com.zongce.app
 
 object WidgetActions {
@@ -9,6 +9,7 @@ object WidgetActions {
     const val OPEN_ACHIEVEMENT = "com.zongce.app.action.WIDGET_ACHIEVEMENT"
     const val OPEN_RECORD = "com.zongce.app.action.WIDGET_RECORD"
     const val RECORD_ID_EXTRA = "com.zongce.app.extra.RECORD_ID"
+    const val YEAR_EXTRA = "com.zongce.app.extra.ACADEMIC_YEAR"
 
     /** 需要真正唤起相机/相册的入口（实际动作由 CaptureScreen 执行）。 */
     fun isEntryAction(action: String?): Boolean =

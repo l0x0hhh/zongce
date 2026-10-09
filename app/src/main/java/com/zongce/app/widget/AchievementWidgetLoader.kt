@@ -1,21 +1,20 @@
-// 组件的数据装载：一次快照读，不做流式订阅。
+// 组件的数据装载：一次快照同时提供学年、选择器状态和成果内容。
 //
 // 为什么不做 Flow 订阅：provideGlance 跑在 WorkManager 的 CoroutineWorker 里，
-// provideContent 之后 composition 只活约 45 秒（源码 KDoc），监听 Flow 没有意义。
-// 数据变了由写路径主动调 WidgetRefresh.refresh() 触发下一次 provideGlance。
+// provideContent 后会话时间有限，组件不持续订阅数据库。
+// 数据变了由写路径更新缓存和实例版本，活跃会话重组时读取新快照。
 package com.zongce.app.widget
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.glance.GlanceId
 import androidx.glance.appwidget.state.getAppWidgetState
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.compose.ui.graphics.toArgb
 import com.zongce.app.R
 import com.zongce.app.core.AcademicYear
-import com.zongce.app.data.RecordWithPhotos
 import com.zongce.app.data.WidgetYearStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /** 组件列表里的一行。字段口径与成果页 RecordRow 逐条对齐，用户从桌面到 App 不换认知。 */
@@ -43,7 +42,8 @@ data class AchievementWidgetSnapshot(
     /** 已排序 + 已截断 ≤ WIDGET_MAX_ROWS */
     val rows: List<AchievementWidgetRow>,
     /** 是否超出上限（决定底部 L2 文案） */
-    val hasMore: Boolean
+    val hasMore: Boolean,
+    val yearPickerVisible: Boolean = false
 ) {
     companion object {
         /**
@@ -74,38 +74,46 @@ object AchievementWidgetLoader {
         withContext(Dispatchers.IO) {
             runCatching {
                 val app = context.applicationContext
-                // 箭头刷新只读缓存；首次绑定或缓存丢失时才回源 Room。
+                // 学年选择只读缓存；首次绑定或缓存丢失时才回源 Room。
                 val cached = AchievementWidgetCache.read(app)
                     ?: AchievementWidgetCache.rebuild(app)
-                val years = cached.years
-                val selected = glanceId?.let {
+                val state = glanceId?.let {
                     getAppWidgetState(app, PreferencesGlanceStateDefinition, it)
-                        .let { state -> state[AchievementWidgetState.selectedYear] }
-                } ?: WidgetYearStore.current(app, years)
-                val year = selected.takeIf { it in years } ?: years.firstOrNull() ?: AcademicYear.LABEL
-
-                // 排序必须在过滤之后：先筛出该学年，再按日期降序。
-                val ofYear = AcademicYear.inYear(cached.records, year) { it.awardDate }
-                    .sortedByDescending { it.awardDate }
-
-                val rows = ofYear
-                    .take(AchievementWidget.WIDGET_MAX_ROWS)
-                    .map { it.toRow(app) }
-
-                AchievementWidgetSnapshot(
-                    years = years,
-                    year = year,
-                    recordCount = ofYear.size,
-                    coveredWuyu = ofYear
-                        .map { it.wuyu }
-                        .filter { it.isNotBlank() }
-                        .distinct()
-                        .count(),
-                    rows = rows,
-                    hasMore = ofYear.size > rows.size
-                )
+                }
+                buildSnapshot(app, cached, state)
             }.getOrElse { AchievementWidgetSnapshot.FALLBACK }
         }
+
+    /** 重组只从已预热的缓存生成画面，不查询 Room；实例状态变化后不会重用旧学年快照。 */
+    fun fromCache(
+        context: Context,
+        state: Preferences,
+        fallback: AchievementWidgetSnapshot
+    ): AchievementWidgetSnapshot =
+        AchievementWidgetCache.read(context.applicationContext)?.let { buildSnapshot(context, it, state) }
+            ?: fallback.copy(yearPickerVisible = state[AchievementWidgetState.yearPickerVisible] ?: false)
+
+    private fun buildSnapshot(
+        context: Context,
+        cached: AchievementWidgetCacheSnapshot,
+        state: Preferences?
+    ): AchievementWidgetSnapshot {
+        val years = cached.years
+        val selected = state?.get(AchievementWidgetState.selectedYear) ?: WidgetYearStore.current(context, years)
+        val year = selected.takeIf { it in years } ?: AcademicYear.LABEL
+        val ofYear = AcademicYear.inYear(cached.records, year) { it.awardDate }
+            .sortedByDescending { it.awardDate }
+        val rows = ofYear.take(AchievementWidget.WIDGET_MAX_ROWS).map { it.toRow(context) }
+        return AchievementWidgetSnapshot(
+            years = years,
+            year = year,
+            recordCount = ofYear.size,
+            coveredWuyu = ofYear.map { it.wuyu }.filter { it.isNotBlank() }.distinct().count(),
+            rows = rows,
+            hasMore = ofYear.size > rows.size,
+            yearPickerVisible = state?.get(AchievementWidgetState.yearPickerVisible) ?: false
+        )
+    }
 
     private fun CachedAchievementRecord.toRow(context: Context): AchievementWidgetRow {
         return AchievementWidgetRow(

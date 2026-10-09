@@ -1,4 +1,4 @@
-// Android 构建配置、应用版本和 Compose 依赖。
+// Android 构建配置：v1.5.6 发布学年选择与点击刷新修复，正式签名和版本码由 CI 注入。
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,8 +15,8 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.gradleProperty("releaseVersionCode").orElse("2").get().toInt()
-        // v1.5.5：组件状态缓存与原子化年份切换。
-        versionName = providers.gradleProperty("versionName").orElse("1.5.5").get()
+        // v1.5.6：组件内直接选择学年，实时读取实例状态并携带学年打开成果页。
+        versionName = providers.gradleProperty("versionName").orElse("1.5.6").get()
     }
 
     // 本地没有签名参数时仍可构建 release；CI 通过 GitHub Secrets 注入正式签名。

@@ -1,4 +1,4 @@
-// 成果页：按学年回看已存的档案。
+// 成果页：按学年回看档案，组件入口的一次性学年请求优先于上次保存的偏好。
 // 学年是学校综测的唯一时间口径，所以它是这一页的主轴 —— 用户来这里的问句
 // 永远是"我这一学年攒下了什么"，而不是"我全部有多少条"。
 //
@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,19 +63,30 @@ private val SELECTION_BAR_SPACE = 88.dp
 fun AchievementScreen(
     items: List<RecordWithPhotos>,
     vm: RecordViewModel,
+    requestedYear: String? = null,
+    onYearRequestConsumed: (String) -> Unit = {},
     onOpenRecord: (Long) -> Unit,
     onAddRecord: () -> Unit
 ) {
     val years = remember(items) { AcademicYear.yearsOf(items.map { it.record.awardDate }) }
     // null 表示初始学年还没从学年偏好读回，展示时临时回落到当前目标学年。
     var selectedYear by remember { mutableStateOf<String?>(null) }
+    var selectionRevision by remember { mutableIntStateOf(0) }
 
-    // 初值以持久化的学年偏好为准 —— 成果页刚打开时就停在用户上次看的学年，
-    // 而不是每次都跳回当前学年。
-    LaunchedEffect(Unit) {
-        val initial = vm.initialAchievementYear()
-        // 用户可能在读回之前就点了 chip，那时本地状态已经是真实选择，不能被覆盖
-        if (selectedYear == null) selectedYear = initial
+    // 组件入口优先使用请求学年，普通打开则读取上次保存的偏好。
+    LaunchedEffect(requestedYear) {
+        if (requestedYear == null && selectedYear != null) return@LaunchedEffect
+        val revision = selectionRevision
+        val initial = vm.initialAchievementYear(requestedYear)
+        // 请求查库期间用户又点了学年时，以最后一次用户操作为准。
+        if (selectionRevision == revision && (requestedYear != null || selectedYear == null)) {
+            selectedYear = initial
+            if (requestedYear != null) {
+                vm.exitSelectionMode()
+                vm.saveAchievementYear(initial)
+            }
+        }
+        requestedYear?.let(onYearRequestConsumed)
     }
 
     // 记录变动后，选中的学年可能已经不在列表里（比如删掉了唯一一条跨学年记录）。
@@ -159,6 +171,7 @@ fun AchievementScreen(
                             text = year,
                             selected = year == selectedYear,
                             onClick = {
+                                selectionRevision += 1
                                 selectedYear = year
                                 // 写入学年偏好（成果页自己的 UI 偏好，杀 App 重开仍停在这个学年）。
                                 // 只在点击时触发一次，不在重组路径上。

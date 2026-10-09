@@ -1,4 +1,4 @@
-// 记录域 ViewModel：记录流、照片导入、多选态、删除（含导出后删除询问闸门）与学年偏好。
+// 记录域 ViewModel：记录、多选、删除与学年偏好；组件指定学年从实际数据校验后应用。
 // 由原 AppViewModel 按功能域拆出（见 docs/design/architecture-refactor-step1-vm-split.md）：
 // 删除相关的一切（RecordDeletion、YearDeletePromptGate、deleting、deleteMessages）都内聚在本类，
 // 不跨 VM 拆散 —— 闸门状态分裂正是 v1.4.0 之前出竞态的重灾区。
@@ -349,10 +349,11 @@ class RecordViewModel(app: Application) : AndroidViewModel(app) {
      * 不能拿 UI 已有的 items 来算 years（StateFlow 首帧是空列表，
      * yearsOf 又永远包含当前学年），否则存储里的学年会被误判成"已不存在"而错误回落。
      */
-    suspend fun initialAchievementYear(): String = withContext(Dispatchers.IO) {
+    suspend fun initialAchievementYear(requestedYear: String? = null): String = withContext(Dispatchers.IO) {
         val items = dao.allWithPhotos().first()
         val years = AcademicYear.yearsOf(items.map { it.record.awardDate })
-        AchievementYearStore.current(getApplication(), years)
+        if (requestedYear != null) requestedYear.takeIf { it in years } ?: AcademicYear.LABEL
+        else AchievementYearStore.current(getApplication(), years)
     }
 
     // ---------- 导出后删除的 pending 状态机（P0-4 / P0-5）----------
