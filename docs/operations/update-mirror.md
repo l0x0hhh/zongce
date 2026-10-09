@@ -62,6 +62,12 @@ flowchart LR
 
 上传最多尝试三次。超时可能发生在服务器已收到文件之后，流程会先匿名回读同名附件并校验，避免直接重复上传。摘要按真实 outcome 标明失败；continue-on-error 不会让后续清单步骤把上传失败当成成功。
 
+## 补同步已发布版本（2026-10-10）
+
+Gitee 查询缺失发行版可能返回 `HTTP 200` / JSON `null`，发布脚本与 `404` 一起按缺失处理；其他响应仍校验，不把鉴权或网络失败误判成不存在。
+
+若 GitHub 正式包已经发布、镜像或官网未同步，可在 GitHub Actions 的 **Release → Run workflow** 中填写对应版本，勾选 **Reuse the existing GitHub APK**，从 `main` 运行。该模式下载对应 Release 的原始 APK，验证资产 SHA-256、大小和 APK 结构，再继续分发；不会重新构建或覆盖已有 GitHub 附件。更新说明仍从当前版本记录读取。
+
 ## 已安装旧包怎么过渡
 
 更新地址编译在 `BuildConfig.UPDATE_MANIFEST_URL` 中。切换只影响之后构建的 APK，已装机的 Netlify 版本不会自行发现 Gitee。

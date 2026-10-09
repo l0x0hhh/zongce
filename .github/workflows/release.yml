@@ -1,4 +1,4 @@
-# 发布签名 APK：GitHub 为正式发布源，Gitee 备用更新与官网部署独立验证。
+# 发布签名 APK：兼容 Gitee 的 200/null 查询，并支持复用正式包修复分发。
 #
 # Gitee 先匿名校验附件 SHA-256，再发布清单；可选分发失败会警告并在摘要中单独标明。
 #
@@ -18,6 +18,10 @@ on:
         description: 'Release version, for example 1.2.0'
         required: true
         type: string
+      reuse_published_apk:
+        description: 'Reuse the existing GitHub APK to repair distribution without rebuilding'
+        type: boolean
+        default: false
 
 # 不同版本也共用镜像 latest.json，因此所有正式发布都排队，避免清单互相覆盖。
 # 但也不自动取消在跑的那个（cancel-in-progress: false）——上传一半被打断更麻烦，
@@ -35,6 +39,7 @@ jobs:
     env:
       RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
       RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version)) }}
+      REUSE_PUBLISHED_APK: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_published_apk || false }}
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
       GITEE_OWNER: ${{ vars.GITEE_OWNER || 'l0x0hhh' }}
       GITEE_REPO: ${{ vars.GITEE_REPO || 'Jicun' }}
@@ -90,10 +95,12 @@ jobs:
           echo "Gitee 镜像配置已确认：${MANIFEST}"
 
       - name: Decode signing key
+        if: env.REUSE_PUBLISHED_APK != 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
       - name: Write signing properties
+        if: env.REUSE_PUBLISHED_APK != 'true'
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -108,17 +115,40 @@ jobs:
       - name: Grant Gradle permission
         run: chmod +x gradlew
       - name: Run tests
+        if: env.REUSE_PUBLISHED_APK != 'true'
         run: ./gradlew test --no-daemon
 
       # 构建与 Gitee 清单回读共用 App 更新地址；Netlify 官网部署不参与 App 更新交付。
       - name: Assemble signed release APK
+        if: env.REUSE_PUBLISHED_APK != 'true'
         run: |
           ./gradlew :app:assembleRelease --no-daemon \
             -PversionName="${RELEASE_VERSION#v}" \
             -PreleaseVersionCode="$((1000000 + GITHUB_RUN_NUMBER))" \
             -PupdateManifestUrl="${APP_UPDATE_MANIFEST_URL}"
       - name: Rename APK
+        if: env.REUSE_PUBLISHED_APK != 'true'
         run: cp app/build/outputs/apk/release/app-release.apk "jicun-${RELEASE_VERSION#v}.apk"
+
+      # 补同步必须使用已发布的原文件，不能重新构建同版本并覆盖附件。
+      - name: Download and verify the published APK
+        if: env.REUSE_PUBLISHED_APK == 'true'
+        run: |
+          set -euo pipefail
+          APK="jicun-${RELEASE_VERSION#v}.apk"
+          curl -fsSL --connect-timeout 15 --max-time 60 --retry 2 \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            > "$RUNNER_TEMP/published-release.json"
+          URL=$(jq -er --arg name "$APK" '[.assets[] | select(.name == $name)][0].browser_download_url | select(startswith("https://"))' "$RUNNER_TEMP/published-release.json")
+          DIGEST=$(jq -er --arg name "$APK" '[.assets[] | select(.name == $name)][0].digest | select(test("^sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/published-release.json")
+          SIZE=$(jq -er --arg name "$APK" '[.assets[] | select(.name == $name)][0].size | select(type == "number" and . > 0)' "$RUNNER_TEMP/published-release.json")
+          curl -fsSL --connect-timeout 15 --max-time 180 --retry 2 -o "$APK" "$URL"
+          echo "${DIGEST#sha256:}  $APK" | sha256sum -c -
+          [ "$(stat -c %s "$APK")" = "$SIZE" ]
+          unzip -t "$APK" > /dev/null
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/published-apk-files.txt"
+          grep -qx AndroidManifest.xml "$RUNNER_TEMP/published-apk-files.txt"
+          echo "已验证并复用 ${RELEASE_TAG} 的原始正式包。"
 
       # 发版说明从 VERSION_HISTORY.md 里对应版本的条目取，不再写死在 workflow 里。
       # 此前这段文案从 v1.5.2 起一字未改，1.5.5 的用户在更新弹窗里看到的还是 1.5.2 的说明。
@@ -133,7 +163,7 @@ jobs:
           # 用 index/substr 而不是正则：mawk 的 ERE 不支持交替，
           # 同时保证 "## v1.5.5" 不会误配到 "## v1.5.50"。
           awk -v head="$HEADING" '
-            index($0, head) == 1 && (length($0) == length(head) || substr($0, length(head) + 1, 1) == " ") { found = 1; next }
+            !found && index($0, head) == 1 && (length($0) == length(head) || substr($0, length(head) + 1, 1) == " ") { found = 1; next }
             found && substr($0, 1, 3) == "## " { exit }
             found { n++; buf[n] = $0 }
             END {
@@ -164,7 +194,8 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: 暨存 ${{ env.RELEASE_VERSION }}
           body_path: ${{ steps.release_notes.outputs.path }}
-          files: jicun-*.apk
+          # 复用时只同步说明，保留现有 GitHub APK；首次发布才上传新包。
+          files: ${{ env.REUSE_PUBLISHED_APK != 'true' && 'jicun-*.apk' || '' }}
 
       # ---------- 国内镜像（Gitee）：先验证附件，再发布清单 ----------
       - name: Upload APK to the Gitee mirror
@@ -187,6 +218,10 @@ jobs:
             --get --data-urlencode "access_token=${GITEE_TOKEN}" \
             -o "$RUNNER_TEMP/gitee-release.json" -w '%{http_code}' \
             "${API}/releases/tags/${RELEASE_TAG}") || CODE="000"
+          # Gitee 查询缺失标签可能返回 HTTP 200 和字面值 null；仅此情况按缺失处理。
+          if [ "$CODE" = "200" ] && jq -e 'type == "null"' "$RUNNER_TEMP/gitee-release.json" > /dev/null; then
+            CODE="404"
+          fi
           case "$CODE" in
             200) ;;
             404)
