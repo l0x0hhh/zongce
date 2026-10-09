@@ -1,3 +1,4 @@
+<!-- 版本与交付状态记录：区分本地改动、正式发布和镜像验证结果。 -->
 # 版本记录卡
 
 > 每次开始新的开发会话前，先阅读本文件。完成代码修改后，在提交前同步更新本文件。
@@ -8,19 +9,26 @@
 | --- | --- |
 | 版本号 | `1.5.5` —— **已打 tag 并发布**（2026-10-06，Release run `37407521856`） |
 | 版本状态 | 已发布。**签名口令仍未取回**：keystore 在仓库根（`jicun-release.keystore`），口令只在 GitHub Secrets，因此本机**无法构建签名包**，发布必须走 tag + CI |
-| 最近更新 | 2026-10-08（修正本表此前的失真记录：曾写作"开发中，未打 tag""改动尚未提交"，而 tag `v1.5.5` 与 Release 都早已存在） |
+| 最近更新 | 2026-10-09（完成 Gitee 备用源发布配置改动，尚未提交或发版；此前发布事实保持不变） |
 | Android 应用版本 | 线上 `versionName 1.5.5`，`versionCode = 1000000 + 构建号`；本地默认仍是 `versionName 1.5.5` / `versionCode 2`，**装不上线上包，别拿本地包做真机测试** |
 | Git 分支 | `main` |
 | 远端 | `https://github.com/l0x0hhh/zongce.git` |
-| 工作区状态 | v1.5.5 已提交并打 tag；学年箭头按钮样式已纳入本次提交；`WidgetYearActionCallback.kt` 连点 180ms 防抖重绘仍未提交，待处理并发隐患；`app/build-alex/` 为未入库的实验构建目录 |
+| 工作区状态 | 学年箭头按钮样式已提交（`27de0a3`）；Gitee 发布流程及三份说明文档为本次未提交改动；`WidgetYearActionCallback.kt` 防抖重绘仍未提交，未纳入本阶段；`app/build-alex/` 为未入库的实验构建目录 |
 | 线上交付状态 | ⚠️ **`https://jicun.netlify.app/downloads/latest.json` 仍停在 `1.5.2`**（落地页仓库里已经是 `1.5.5`）—— 站点没随仓库更新，详见下节 |
 
 ## 未发布变更（2026-10-09）
 
 - 成果组件的学年箭头改为 32dp 圆角按钮，居中显示箭头，并区分可用和禁用状态的背景与文字颜色。
 - 学年标题行增加垂直间距；本次仅提交样式，不包含连点防抖刷新逻辑，也不修改已发布版本号。
+- Gitee 备用源采用公开仓库 `l0x0hhh/Jicun` 的 `master` 分支，默认清单地址为 `https://gitee.com/l0x0hhh/Jicun/raw/master/latest.json`。引入独立的 `APP_UPDATE_MANIFEST_URL`，官网仍使用 `LIVE_*`，两条交付链路分开。
+- 恢复镜像上传与清单发布：先匿名下载 APK 校验 SHA-256，再发布带完整说明、哈希和大小的清单，并精确回读 JSON 字段。已有附件不删除、不覆盖；所有版本串行发布，旧标签不能覆盖较新的清单。
+- 镜像和官网失败单独警告并报告真实状态，不阻断 GitHub 正式发布。仅在 GitHub 发布成功后同步分发点，上传失败时不继续发布镜像清单。
+- 2026-10-09 匿名实测：Gitee 清单仍是 `1.5.0`，旧版 APK 为 13,752,007 字节、文件结构完整。尚未验证当前 GITEE_TOKEN 上传权限或真机新包安装，也没有切换线上配置。
+- 本阶段验证：23 个离线场景及所有内嵌 Bash 脚本语法检查通过，包括缺令牌、鉴权失败、上传失败与超时、同大小不同内容、过期清单、错误下载地址、旧标签防倒退、重复执行和 Git 推送失败。临时验证脚本在工作区 `_tmp/`，不纳入 App 仓库。
 
 ## 交付事故与修复：线上更新端点停在旧版本（2026-10-08）
+
+> 以下保留 10 月 8 日的 Netlify 方案记录。10 月 9 日的新方案已将 App 更新源改为独立的 APP_UPDATE_MANIFEST_URL；未恢复 Netlify 的旧用户也可经已验证的新包手动覆盖安装过渡，详见上节与迁移说明。
 
 - **现象**：v1.5.5 于 2026-10-06 发布，Release 流水线 `37407521856` 全绿（GitHub Release ✅、落地页同步 ✅、Gitee 两步按设计 skipped）。五天后的 2026-10-08 实测线上：
   - `https://jicun.netlify.app/downloads/latest.json` 返回 **`1.5.2`**，且 `Content-Type: application/vnd.android.package-archive`；
@@ -288,7 +296,7 @@
 - 界面新增的提醒确认页还没上真机/模拟器过一遍（CI 只做到构建与单测）。
 - **Release 已跑通（2026-09-21）**，两次失败的根因都已定位并修掉：第一次＝4 个签名 Secret 未配好（keystore 口令遗失，已重新生成）；第二次＝`signingStoreFile` 相对路径被按 `app/` 解析（已改用 `rootProject.file()`）。签名口令**不入库、不进记忆**，由刘总存在自己的密码管理器；丢了就再生成一把（发新版本时换 key 会让老安装升级失败，届时需先卸载——目前只有 1.1.0 一个版本，尚无此负担）。
 - ~~GitHub Release 的发行说明只有一行 `Full Changelog` 链接~~ → **已修（2026-10-08）**：说明改由 `release.yml` 从本文件 `## v<版本>` 段落生成；历史那几个 Release 想补说明的话，去 Release 页面点编辑。
-- ~~**release.yml 没传 `-PupdateManifestUrl`** → 镜像清单形同虚设~~ → **已修**：构建时注入 `-PupdateManifestUrl="${LIVE_MANIFEST_URL}"`，且线上校验读的是同一个地址。目前没解决的是**站点没更新**（见上节），不是包里没有地址。
+- ~~**release.yml 没传 `-PupdateManifestUrl`** → 镜像清单形同虚设~~ → **已修**：10 月 8 日曾使用 `LIVE_MANIFEST_URL`，10 月 9 日改为独立的 `APP_UPDATE_MANIFEST_URL`，同时用于编译和 Gitee 清单回读。官网暂停与旧用户过渡分别处理，见上节。
 
 早先的记录卡曾把 `MainActivity.kt`、`ExportCheck.kt`、`AppViewModel.kt`、`CaptureScreen.kt`、`EntryScreen.kt`、`ListScreen.kt`、`UpdateDialog.kt` 和 `update/` 列为未提交改动，这些文件已在提交 `9e8686d` 中入库。
 

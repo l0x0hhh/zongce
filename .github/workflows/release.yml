@@ -1,6 +1,6 @@
-# Version tags build a signed APK and publish a GitHub Release.
+# 发布签名 APK：GitHub 为正式发布源，Gitee 备用更新与官网部署独立验证。
 #
-# 国内下载源改由 Netlify 产品页托管 APK 和 latest.json，Gitee 附件上传暂不参与发布。
+# Gitee 先匿名校验附件 SHA-256，再发布清单；可选分发失败会警告并在摘要中单独标明。
 #
 # 另外可选：把 APK 同步到宣传页仓库（落地页自己托管安装包，下载才能保证是 .apk，
 # 而不是被第三方图床标成 application/zip 后、被安卓浏览器存成 .zip）。缺配置同样跳过：
@@ -19,11 +19,11 @@ on:
         required: true
         type: string
 
-# 发版不能并发跑：两个 run 同时往同一个 Gitee release 传附件会互相踩。
+# 不同版本也共用镜像 latest.json，因此所有正式发布都排队，避免清单互相覆盖。
 # 但也不自动取消在跑的那个（cancel-in-progress: false）——上传一半被打断更麻烦，
 # 后触发的排队等着就行。
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -34,14 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
-      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', inputs.version) }}
+      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version)) }}
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-      GITEE_OWNER: ${{ vars.GITEE_OWNER }}
-      GITEE_REPO: ${{ vars.GITEE_REPO }}
+      GITEE_OWNER: ${{ vars.GITEE_OWNER || 'l0x0hhh' }}
+      GITEE_REPO: ${{ vars.GITEE_REPO || 'Jicun' }}
       LANDING_TOKEN: ${{ secrets.LANDING_TOKEN }}
       LANDING_REPO: ${{ vars.LANDING_REPO || 'l0x0hhh/JICUN' }}
-      # 线上交付端点：真正决定用户能否更新的是这两个 URL，不是仓库里的文件。
-      # 只在这里定义一次，构建用的 updateManifestUrl 也从它取，避免两处写死后各自漂移。
+      # App 更新源编译进 APK，与官网地址分开；旧包仍须通过旧源或手动覆盖安装过渡。
+      APP_UPDATE_MANIFEST_URL: ${{ vars.APP_UPDATE_MANIFEST_URL || 'https://gitee.com/l0x0hhh/Jicun/raw/master/latest.json' }}
+      # LIVE_* 仅校验官网，保留现有变量，切换 Gitee 时不要把它们改成镜像地址。
       LIVE_MANIFEST_URL: ${{ vars.LIVE_MANIFEST_URL || 'https://jicun.netlify.app/downloads/latest.json' }}
       LIVE_APK_URL: ${{ vars.LIVE_APK_URL || 'https://jicun.netlify.app/downloads/jicun.apk' }}
       # 可选：站点的 build hook。Netlify / Cloudflare Pages / Vercel 都提供这种"POST 一下
@@ -50,6 +51,17 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v5
+      - name: Validate the release version and update URL
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::正式版本必须是三段数字，例如 1.5.6 或 v1.5.6。"
+            exit 1
+          fi
+          if [[ "$APP_UPDATE_MANIFEST_URL" != https://* ]]; then
+            echo "::error::App 更新清单地址必须使用 HTTPS。"
+            exit 1
+          fi
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -57,23 +69,25 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # 解析镜像分支并算出清单地址，写进 $GITHUB_ENV 给后面的步骤用。
-      # 这里的任何问题都只警告、不失败：镜像不该拦住正式的 GitHub 发布。
+      # 可选镜像失败不阻断构建；下游必须检查 outcome，不能把 continue-on-error 当成功。
       - name: Resolve mirror settings
-        # Gitee 附件上传在 GitHub Runner 上不稳定；Netlify 已承担国内镜像职责。
-        if: ${{ false }}
+        id: mirror_settings
+        continue-on-error: true
+        if: env.GITEE_TOKEN != '' && env.GITEE_OWNER != '' && env.GITEE_REPO != ''
         run: |
-          set -uo pipefail
+          set -euo pipefail
+          trap 'echo "::warning::Gitee 配置解析失败；本次仅继续 GitHub 正式发布。"' ERR
           API="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}"
-          BRANCH=$(curl -s --connect-timeout 30 --retry 3 --retry-delay 5 "${API}?access_token=${GITEE_TOKEN}" | jq -r '.default_branch // empty')
-          if [ -z "$BRANCH" ]; then
-            echo "::warning::Gitee 镜像仓库 ${GITEE_OWNER}/${GITEE_REPO} 还没有分支。请在网页上创建一个文件（例如 latest.json）产生首个提交后重跑。本次跳过镜像同步。"
-            exit 0
-          fi
+          curl -fsS --connect-timeout 15 --max-time 60 --retry 2 --retry-delay 5 \
+            --get --data-urlencode "access_token=${GITEE_TOKEN}" "$API" > "$RUNNER_TEMP/gitee-repo.json"
+          BRANCH=$(jq -er 'select(.public == true) | .default_branch | select(type == "string" and length > 0)' "$RUNNER_TEMP/gitee-repo.json")
           MANIFEST="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${BRANCH}/latest.json"
-          echo "MIRROR_BRANCH=${BRANCH}" >> "$GITHUB_ENV"
-          echo "MIRROR_MANIFEST_URL=${MANIFEST}" >> "$GITHUB_ENV"
-          echo "镜像分支 ${BRANCH}，清单地址 ${MANIFEST}"
+          if [ "$APP_UPDATE_MANIFEST_URL" != "$MANIFEST" ]; then
+            echo "::warning::APP_UPDATE_MANIFEST_URL 与实际 Gitee 分支不一致，停止镜像同步。应配置为 ${MANIFEST}。"
+            exit 1
+          fi
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "Gitee 镜像配置已确认：${MANIFEST}"
 
       - name: Decode signing key
         env:
@@ -96,15 +110,13 @@ jobs:
       - name: Run tests
         run: ./gradlew test --no-daemon
 
-      # 清单地址要编译进 APK（BuildConfig.UPDATE_MANIFEST_URL），取自 LIVE_MANIFEST_URL，
-      # 与下面「线上端点校验」读的是同一个地址 —— 构建进包的和被校验的必须是同一个。
-      # Netlify 托管 APK 和 latest.json，GitHub Release 作为备用更新源。
+      # 构建与 Gitee 清单回读共用 App 更新地址；Netlify 官网部署不参与 App 更新交付。
       - name: Assemble signed release APK
         run: |
           ./gradlew :app:assembleRelease --no-daemon \
             -PversionName="${RELEASE_VERSION#v}" \
             -PreleaseVersionCode="$((1000000 + GITHUB_RUN_NUMBER))" \
-            -PupdateManifestUrl="${LIVE_MANIFEST_URL}"
+            -PupdateManifestUrl="${APP_UPDATE_MANIFEST_URL}"
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk "jicun-${RELEASE_VERSION#v}.apk"
 
@@ -154,148 +166,179 @@ jobs:
           body_path: ${{ steps.release_notes.outputs.path }}
           files: jicun-*.apk
 
-      # ---------- 国内镜像（Gitee）----------
-      # 顺序刻意是「先附件、后清单」：清单一旦上线就会被用户读到，
-      # 反过来会出现一段"用户点了更新却 404"的窗口。
+      # ---------- 国内镜像（Gitee）：先验证附件，再发布清单 ----------
       - name: Upload APK to the Gitee mirror
         id: mirror_attachment
-        if: env.MIRROR_BRANCH != ''
+        continue-on-error: true
+        if: always() && steps.github_release.outcome == 'success' && steps.mirror_settings.outcome == 'success'
+        env:
+          MIRROR_BRANCH: ${{ steps.mirror_settings.outputs.branch }}
         run: |
           set -euo pipefail
+          trap 'echo "::warning::Gitee 附件未验证通过，保留现有清单；GitHub 正式发布不受影响。"' ERR
           API="https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}"
           APK="jicun-${RELEASE_VERSION#v}.apk"
-
-          # 同名 release 就复用，保证本步骤可以重复执行（重跑流水线不会 400）
-          REL_ID=$(curl -s --connect-timeout 30 --retry 3 --retry-delay 5 -H "Content-Type: application/json" \
-            "${API}/releases/tags/${RELEASE_TAG}?access_token=${GITEE_TOKEN}" | jq -r '.id // empty' || true)
-          if [ -z "$REL_ID" ]; then
-            REL_ID=$(curl -s -X POST "${API}/releases" \
-              -d "access_token=${GITEE_TOKEN}" \
-              -d "tag_name=${RELEASE_TAG}" \
-              -d "name=暨存 ${RELEASE_VERSION#v}" \
-              -d "target_commitish=${MIRROR_BRANCH}" \
-              -d "body=国内镜像。对应 GitHub Release：https://github.com/l0x0hhh/zongce/releases/tag/${RELEASE_TAG}" \
-              | jq -r '.id // empty')
-          fi
-          if [ -z "$REL_ID" ]; then
-            echo "::error::Gitee 上既找不到也无法创建 release ${RELEASE_TAG}"
-            exit 1
-          fi
-          echo "Gitee release id = ${REL_ID}"
-
-          # 同名附件先删，避免重复上传（Gitee 不会自动覆盖）
-          curl -s "${API}/releases/${REL_ID}/attach_files?access_token=${GITEE_TOKEN}" \
-            | jq -r --arg n "$APK" '.[] | select(.name == $n) | .id' \
-            | while read -r fid; do
-                [ -n "$fid" ] && curl -s -o /dev/null -X DELETE \
-                  "${API}/releases/${REL_ID}/attach_files/${fid}?access_token=${GITEE_TOKEN}"
-              done
-
-          # 上传：multipart/form-data，文件字段名固定为 file。
-          # 13MB 走国际链路本来就慢，偶发失败是常态（v1.4.0 就是一次失败把后面全带走了），
-          # 所以要重试：最多 3 次，每次间隔 30 秒，只认 HTTP 201 才算成功。
-          CODE=""
-          for attempt in 1 2 3; do
-            echo "第 ${attempt} 次上传 ${APK}（$(du -h "$APK" | cut -f1)）"
-            # 用 || CODE=000 兜住 curl 自身的失败（连接中断、超时），
-            # 否则 set -e 会在第一次网络抖动时就直接把脚本掐掉，根本走不到重试。
-            CODE=$(curl -s --connect-timeout 30 --max-time 1200 -o /tmp/gitee-attach.json -w '%{http_code}' -X POST \
-              "${API}/releases/${REL_ID}/attach_files" \
-              -F "access_token=${GITEE_TOKEN}" \
-              -F "file=@${APK}") || CODE="000"
-            echo "上传返回 HTTP ${CODE}"
-            if [ -f /tmp/gitee-attach.json ]; then cat /tmp/gitee-attach.json; fi
-            if [ "$CODE" = "201" ]; then break; fi
-            if [ "$attempt" -lt 3 ]; then echo "未成功，30 秒后重试"; sleep 30; fi
-          done
-          if [ "$CODE" != "201" ]; then
-            echo "::error::向 Gitee 上传 ${APK} 三次都失败（最后一次 HTTP ${CODE}）。镜像本轮不会更新，GitHub 正式发布不受影响。"
-            exit 1
-          fi
-
-      # 清单用 git push 更新（而不是 contents API）：语义明确、没有"新建还是更新、要不要 sha"的歧义，
-      # 镜像仓库只有一个 JSON，克隆成本可以忽略。
-      # 附件没传成功就绝对不要写清单：清单里的 apkUrl 指向 Gitee 附件，
-      # 附件不存在等于给用户一个 404 的更新按钮。所以这一步盯的是上一步的 outcome。
-      - name: Publish the mirror manifest
-        id: mirror_manifest
-        if: always() && env.MIRROR_BRANCH != '' && steps.mirror_attachment.outcome == 'success'
-        run: |
-          set -euo pipefail
-          V="${RELEASE_VERSION#v}"
-          APK="jicun-${V}.apk"
           APK_URL="https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/releases/download/${RELEASE_TAG}/${APK}"
-          WORK="$RUNNER_TEMP/gitee-mirror"
+          LOCAL_SHA=$(sha256sum "$APK" | cut -d ' ' -f1)
+          LOCAL_SIZE=$(stat -c %s "$APK")
 
-          # 令牌走 Authorization 头，不拼进 URL：拼进 URL 时若令牌含特殊字符会被
-          # percent-encode，GitHub 的 secret 掩码就认不出来了，有漏进日志的风险。
-          AUTH=$(printf '%s:%s' "${GITEE_OWNER}" "${GITEE_TOKEN}" | base64 -w0)
-          git -c "http.extraheader=Authorization: Basic ${AUTH}" clone --depth 1 \
-            "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" "$WORK"
-          cat > "$WORK/latest.json" <<JSON
-          {
-            "version": "${V}",
-            "title": "暨存 ${V}",
-            "notes": "国内镜像下载；GitHub 备份见 https://github.com/l0x0hhh/zongce/releases/tag/${RELEASE_TAG}",
-            "apkUrl": "${APK_URL}"
-          }
-          JSON
-          # 注意必须先 add：latest.json 是新文件，commit -am 只覆盖已跟踪文件的改动，
-          # 镜像仓库里没有它时会"nothing to commit"直接失败（v1.2.1 首跑就栽在这）。
-          git -C "$WORK" add -A
-          git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
-            commit -q -m "release: 暨存 ${V}"
-          git -C "$WORK" -c "http.extraheader=Authorization: Basic ${AUTH}" \
-            push -q origin "HEAD:${MIRROR_BRANCH}"
+          # 只在确实不存在时创建发行版；鉴权或网络错误不能被误判成不存在。
+          CODE=$(curl -sS --connect-timeout 15 --max-time 60 --retry 2 --retry-delay 5 \
+            --get --data-urlencode "access_token=${GITEE_TOKEN}" \
+            -o "$RUNNER_TEMP/gitee-release.json" -w '%{http_code}' \
+            "${API}/releases/tags/${RELEASE_TAG}") || CODE="000"
+          case "$CODE" in
+            200) ;;
+            404)
+              curl -fsS --connect-timeout 15 --max-time 60 -X POST "${API}/releases" \
+                --data-urlencode "access_token=${GITEE_TOKEN}" \
+                --data-urlencode "tag_name=${RELEASE_TAG}" \
+                --data-urlencode "name=暨存 ${RELEASE_VERSION#v}" \
+                --data-urlencode "target_commitish=${MIRROR_BRANCH}" \
+                --data-urlencode "body@$RUNNER_TEMP/release-notes.md" > "$RUNNER_TEMP/gitee-release.json"
+              ;;
+            *) echo "::warning::读取 Gitee 发行版失败（HTTP ${CODE}），停止镜像上传。"; exit 1 ;;
+          esac
+          REL_ID=$(jq -er '.id | select(type == "number")' "$RUNNER_TEMP/gitee-release.json")
+          curl -fsS --connect-timeout 15 --max-time 60 --get \
+            --data-urlencode "access_token=${GITEE_TOKEN}" \
+            "${API}/releases/${REL_ID}/attach_files" > "$RUNNER_TEMP/gitee-files.json"
+          jq -e 'type == "array"' "$RUNNER_TEMP/gitee-files.json" > /dev/null
+          EXISTING=$(jq -r --arg name "$APK" '[.[] | select(.name == $name)] | length' "$RUNNER_TEMP/gitee-files.json")
 
-          # 回读校验：确认清单真的能被匿名读到、且版本号对得上。
-          # 国内镜像的全部价值就是"用户能读到它"，没校验过的写入不算写完。
-          # 必须带 -L：Gitee 的 /raw/ 会 302 跳到 raw.giteeusercontent.com，
-          # 不跟跳转只会抓到那个跳转页 HTML，导致误报"内容里没有版本号"（v1.2.1 就栽在这）。
-          # 一回合一回合地等，而不是"睡 5 秒查一次就定罪"：Gitee 的 raw 走 CDN，
-          # 刚 push 完立刻读经常拿回旧内容。v1.3.5 就是这么被误判失败的——
-          # 文件其实写进去了，却把整条流水线判死、还连累了后面的落地页同步。
-          # 最多等 6 × 15 = 90 秒；这段只在附件成功后才跑，不值得为它省时间。
+          # 已有版本包不删除、不覆盖；内容不同须另发新版本，避免破坏正在下载的用户。
+          if [ "$EXISTING" = "0" ]; then
+            CODE="000"
+            for attempt in 1 2 3; do
+              CODE=$(curl -sS --connect-timeout 15 --max-time 180 \
+                -o "$RUNNER_TEMP/gitee-upload.json" -w '%{http_code}' -X POST \
+                "${API}/releases/${REL_ID}/attach_files" \
+                -F "access_token=${GITEE_TOKEN}" -F "file=@${APK}") || CODE="000"
+              echo "第 ${attempt} 次上传：HTTP ${CODE}"
+              if [ "$CODE" = "201" ]; then break; fi
+              # 上传超时可能已经落盘；先匿名回读同名文件，避免重复上传。
+              if curl -fsSL --connect-timeout 15 --max-time 180 \
+                -o "$RUNNER_TEMP/gitee-apk.apk" "$APK_URL" && \
+                [ "$(sha256sum "$RUNNER_TEMP/gitee-apk.apk" | cut -d ' ' -f1)" = "$LOCAL_SHA" ]; then
+                CODE="201"
+                break
+              fi
+              if [ "$attempt" -lt 3 ]; then sleep 10; fi
+            done
+            if [ "$CODE" != "201" ]; then
+              echo "::warning::Gitee 附件三次上传均未确认成功，停止发布镜像清单。"
+              exit 1
+            fi
+          fi
+
+          # 上传成功也不等于用户可下载：匿名 GET 必须拿到与本地完全相同的 APK。
           OK=0
-          for attempt in $(seq 1 6); do
-            sleep 15
-            FETCHED=$(curl -sL -f --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 5 \
-              "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json") || FETCHED=""
-            echo "第 ${attempt} 次回读：${FETCHED}"
-            if echo "$FETCHED" | grep -q "\"${V}\""; then OK=1; break; fi
+          for attempt in 1 2 3; do
+            if curl -fsSL --connect-timeout 15 --max-time 180 --retry 2 --retry-delay 5 \
+              -o "$RUNNER_TEMP/gitee-apk.apk" "$APK_URL" && \
+              [ "$(sha256sum "$RUNNER_TEMP/gitee-apk.apk" | cut -d ' ' -f1)" = "$LOCAL_SHA" ]; then
+              OK=1
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 10; fi
           done
           if [ "$OK" != "1" ]; then
-            echo "::error::清单回读校验失败：等了 90 秒仍读不到版本号 ${V}"
+            echo "::warning::Gitee 匿名 APK 下载或 SHA-256 校验失败，停止发布镜像清单。"
             exit 1
           fi
-          echo "镜像清单已就绪：https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${MIRROR_BRANCH}/latest.json"
+          {
+            echo "verified=true"
+            echo "apk_url=${APK_URL}"
+            echo "sha256=${LOCAL_SHA}"
+            echo "size=${LOCAL_SIZE}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Gitee 附件匿名下载已验证（${LOCAL_SIZE} 字节）。"
+
+      - name: Publish the mirror manifest
+        id: mirror_manifest
+        continue-on-error: true
+        if: always() && steps.github_release.outcome == 'success' && steps.mirror_attachment.outcome == 'success' && steps.mirror_attachment.outputs.verified == 'true'
+        env:
+          MIRROR_BRANCH: ${{ steps.mirror_settings.outputs.branch }}
+          MIRROR_APK_URL: ${{ steps.mirror_attachment.outputs.apk_url }}
+          MIRROR_SHA256: ${{ steps.mirror_attachment.outputs.sha256 }}
+          MIRROR_SIZE: ${{ steps.mirror_attachment.outputs.size }}
+        run: |
+          set -euo pipefail
+          trap 'echo "::warning::Gitee 清单未验证通过；GitHub 正式发布不受影响，请查看分发摘要。"' ERR
+          V="${RELEASE_VERSION#v}"
+          WORK="$RUNNER_TEMP/gitee-mirror"
+          AUTH=$(printf '%s:%s' "${GITEE_OWNER}" "${GITEE_TOKEN}" | base64 -w0)
+          echo "::add-mask::${AUTH}"
+          git -c "http.extraheader=Authorization: Basic ${AUTH}" clone --depth 1 \
+            --branch "$MIRROR_BRANCH" "https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git" "$WORK"
+
+          # 全局发布队列加版本检查，防止重跑旧标签将 latest.json 倒退。
+          if [ -f "$WORK/latest.json" ]; then
+            CURRENT=$(jq -er '.version | ltrimstr("v")' "$WORK/latest.json")
+            if jq -en --arg current "$CURRENT" --arg target "$V" \
+              '($current | split(".") | map(tonumber)) > ($target | split(".") | map(tonumber))' > /dev/null; then
+              echo "::warning::Gitee 清单已是更高版本 ${CURRENT}，拒绝用 ${V} 覆盖。"
+              exit 1
+            fi
+          fi
+          # jq 安全保留说明中的引号和换行；额外完整性字段不影响旧 App 解析。
+          jq -n --arg version "$V" --arg title "暨存 ${V}" \
+            --rawfile notes "$RUNNER_TEMP/release-notes.md" \
+            --arg apkUrl "$MIRROR_APK_URL" --arg sha256 "$MIRROR_SHA256" --argjson size "$MIRROR_SIZE" \
+            '{version: $version, title: $title, notes: $notes, apkUrl: $apkUrl, sha256: $sha256, size: $size}' \
+            > "$WORK/latest.json"
+          git -C "$WORK" add -- latest.json
+          if ! git -C "$WORK" diff --cached --quiet; then
+            git -C "$WORK" -c user.name="jicun-release" -c user.email="release@users.noreply.github.com" \
+              commit -q -m "release: 暨存 ${V}"
+            git -C "$WORK" -c "http.extraheader=Authorization: Basic ${AUTH}" \
+              push -q origin "HEAD:${MIRROR_BRANCH}"
+          fi
+
+          # 即使没有文件变化也回读线上；只认准确字段，不在全文搜索版本字符串。
+          OK=0
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsSL --connect-timeout 15 --max-time 60 \
+              -o "$RUNNER_TEMP/gitee-live.json" "$APP_UPDATE_MANIFEST_URL" && \
+              jq -e --arg version "$V" --arg apk "$MIRROR_APK_URL" --arg sha "$MIRROR_SHA256" --argjson size "$MIRROR_SIZE" \
+                '.version == $version and .apkUrl == $apk and .sha256 == $sha and .size == $size' \
+                "$RUNNER_TEMP/gitee-live.json" > /dev/null; then
+              OK=1
+              break
+            fi
+            echo "第 ${attempt} 次清单回读尚未一致。"
+            if [ "$attempt" -lt 6 ]; then sleep 15; fi
+          done
+          if [ "$OK" != "1" ]; then
+            echo "::warning::Gitee 清单版本、下载地址或完整性字段不一致，本次镜像未确认交付。"
+            exit 1
+          fi
+          echo "verified=true" >> "$GITHUB_OUTPUT"
+          echo "Gitee 更新源已确认交付：${APP_UPDATE_MANIFEST_URL}"
 
       # ---------- 宣传页（落地页自托管安装包）----------
       # 落地页把 APK 放在自己站点里，下载才是同源直下、且能带正确的 Content-Type
       # （第三方图床会把 APK 标成 application/zip，安卓浏览器就存成 .zip）。
       # 和 Gitee 镜像一样：没配令牌就整段跳过，绝不拦住正式发布。
-      # always()：这一步只依赖本地那个 APK 文件，跟 Gitee 镜像成不成无关。
-      # 之前写的是 env.LANDING_TOKEN != ''，结果镜像一失败它就跟着 skipped，
-      # 官网的安装包从此落后一个大版本（v1.4.0 就是这么卡在 1.3.6 的）。
+      # 官网是独立的可选分发点；仅在 GitHub 正式发布成功后同步。
       - name: Publish the APK to the landing page
         id: landing_apk
-        if: always() && env.LANDING_TOKEN != ''
+        continue-on-error: true
+        if: always() && steps.github_release.outcome == 'success' && env.LANDING_TOKEN != ''
         run: |
           set -euo pipefail
           WORK="$RUNNER_TEMP/landing"
           AUTH=$(printf 'x-access-token:%s' "${LANDING_TOKEN}" | base64 -w0)
+          echo "::add-mask::${AUTH}"
           git -c "http.extraheader=Authorization: Basic ${AUTH}" clone --depth 1 \
             "https://github.com/${LANDING_REPO}.git" "$WORK"
           mkdir -p "$WORK/public/downloads"
           cp "jicun-${RELEASE_VERSION#v}.apk" "$WORK/public/downloads/jicun.apk"
-          cat > "$WORK/public/downloads/latest.json" <<JSON
-          {
-            "version": "${RELEASE_VERSION#v}",
-            "title": "暨存 ${RELEASE_VERSION#v}",
-            "notes": "本次版本包含功能改进和问题修复。",
-            "apkUrl": "https://jicun.netlify.app/downloads/jicun.apk"
-          }
-          JSON
+          jq -n --arg version "${RELEASE_VERSION#v}" --arg title "暨存 ${RELEASE_VERSION#v}" \
+            --rawfile notes "$RUNNER_TEMP/release-notes.md" --arg apkUrl "$LIVE_APK_URL" \
+            '{version: $version, title: $title, notes: $notes, apkUrl: $apkUrl}' \
+            > "$WORK/public/downloads/latest.json"
           # 用 status --porcelain 判变化（git diff 看不出新增的未跟踪文件，踩过这个坑）。
           if [ -z "$(git -C "$WORK" status --porcelain -- public/downloads/jicun.apk public/downloads/latest.json)" ]; then
             echo "落地页的安装包已是最新，无需提交。"
@@ -312,6 +355,7 @@ jobs:
       # v1.5.5 的事故正是这一段：仓库里是 1.5.5，线上站点停在 1.5.2，五天没人发现。
       - name: Trigger the site deploy
         id: site_deploy
+        continue-on-error: true
         if: always() && steps.landing_apk.outcome == 'success'
         run: |
           if [ -z "${SITE_DEPLOY_HOOK}" ]; then
@@ -324,47 +368,51 @@ jobs:
           echo "站点 build hook 返回 HTTP ${CODE}"
           if [ "$CODE" != "200" ] && [ "$CODE" != "201" ]; then
             echo "::warning::站点 build hook 返回 HTTP ${CODE}，构建可能没有被触发。"
+            exit 1
           fi
 
-      # 交付契约：决定用户能否更新的是线上那两个 URL，不是仓库里的文件。
-      # 只推仓库、不读线上，就会出现「流水线全绿、线上落后三个版本」这种事。
-      # 所以这里要求线上清单版本和线上 APK 字节数都对得上，对不上整个 run 变红 ——
-      # 让「发布成功」的定义从「我推了」改成「用户能拿到」。
-      - name: Verify the live update endpoint
+      # 官网交付独立验证：失败会在摘要标明，不阻断 Gitee 更新或 GitHub 正式发布。
+      - name: Verify the product site endpoint
         id: live_endpoint
+        continue-on-error: true
         if: always() && steps.landing_apk.outcome == 'success'
         run: |
           set -uo pipefail
           V="${RELEASE_VERSION#v}"
           APK="jicun-${V}.apk"
-          LOCAL_SIZE=$(stat -c %s "$APK")
+          LOCAL_SHA=$(sha256sum "$APK" | cut -d ' ' -f1)
           MANIFEST_OK=0
           APK_OK=0
           CT=""
-          LIVE_SIZE=""
-          # Netlify 的 CDN 有传播延迟，最多等 12 x 15 = 180 秒。
+          # 等待站点构建与 CDN 传播；版本匹配后才下载 APK 校验，避免重复下载旧包。
           for attempt in $(seq 1 12); do
-            sleep 15
-            curl -sSL -D "$RUNNER_TEMP/live.hdr" -o "$RUNNER_TEMP/live.body" \
-              --connect-timeout 30 --max-time 60 "${LIVE_MANIFEST_URL}" || true
-            BODY=$(cat "$RUNNER_TEMP/live.body" 2>/dev/null || echo "")
+            MANIFEST_OK=0
+            APK_OK=0
+            if curl -fsSL -D "$RUNNER_TEMP/live.hdr" -o "$RUNNER_TEMP/live.body" \
+              --connect-timeout 15 --max-time 60 "$LIVE_MANIFEST_URL" && \
+              jq -e --arg version "$V" --arg apk "$LIVE_APK_URL" \
+                '.version == $version and .apkUrl == $apk' "$RUNNER_TEMP/live.body" > /dev/null; then
+              MANIFEST_OK=1
+              if curl -fsSL --connect-timeout 15 --max-time 180 \
+                -o "$RUNNER_TEMP/site-apk.apk" "$LIVE_APK_URL" && \
+                [ "$(sha256sum "$RUNNER_TEMP/site-apk.apk" | cut -d ' ' -f1)" = "$LOCAL_SHA" ]; then
+                APK_OK=1
+              fi
+            fi
             CT=$(grep -i '^content-type:' "$RUNNER_TEMP/live.hdr" 2>/dev/null \
               | tail -1 | tr -d '\r' | sed 's/^[^:]*:[[:space:]]*//')
-            if echo "$BODY" | grep -q "\"${V}\""; then MANIFEST_OK=1; else MANIFEST_OK=0; fi
-            LIVE_SIZE=$(curl -sIL --connect-timeout 30 --max-time 60 "${LIVE_APK_URL}" 2>/dev/null \
-              | grep -i '^content-length:' | tail -1 | tr -d '\r' | sed 's/^[^:]*:[[:space:]]*//')
-            if [ -n "$LIVE_SIZE" ] && [ "$LIVE_SIZE" = "$LOCAL_SIZE" ]; then APK_OK=1; else APK_OK=0; fi
-            echo "第 ${attempt} 次：清单=${MANIFEST_OK} 安装包=${APK_OK}（线上 ${LIVE_SIZE:-读不到} / 本地 ${LOCAL_SIZE}）Content-Type=${CT}"
+            echo "第 ${attempt} 次官网校验：清单=${MANIFEST_OK} APK哈希=${APK_OK} Content-Type=${CT}"
             if [ "$MANIFEST_OK" = "1" ] && [ "$APK_OK" = "1" ]; then break; fi
+            if [ "$attempt" -lt 12 ]; then sleep 15; fi
           done
 
           FAIL=0
           if [ "$MANIFEST_OK" != "1" ]; then
-            echo "::error::线上更新清单 ${LIVE_MANIFEST_URL} 三分钟后仍读不到 ${V}，用户检查更新读到的还是旧版本。常见原因：站点的**生产部署被跳过** —— 仓库收到了推送、Deploys 里却是一条 Skipped（Netlify 在额度/计费用尽时会这样，2026-10-08 就是这么发生的）。请到站点的 Deploys 面板确认本次推送有没有真的部署成功。"
+            echo "::warning::官网清单 ${LIVE_MANIFEST_URL} 尚未交付 ${V}，请检查托管平台部署状态及额度。Gitee 更新源独立校验。"
             FAIL=1
           fi
           if [ "$APK_OK" != "1" ]; then
-            echo "::error::线上安装包 ${LIVE_APK_URL} 的字节数与本次发布的 ${APK} 不一致，产品页下载到的可能不是 ${V}。"
+            echo "::warning::官网 APK ${LIVE_APK_URL} 未通过匿名下载或 SHA-256 校验，请勿宣布官网下载已更新。"
             FAIL=1
           fi
           case "$CT" in
@@ -372,7 +420,7 @@ jobs:
             *) echo "::warning::线上清单的 Content-Type 是「${CT}」，不是 application/json。App 不受影响，但浏览器会把清单当成文件下载；应给 /downloads/*.json 单独声明响应头。" ;;
           esac
           if [ "$FAIL" != "0" ]; then exit 1; fi
-          echo "线上端点校验通过：${LIVE_MANIFEST_URL} 已是 ${V}，${LIVE_APK_URL} 字节数一致"
+          echo "官网清单与 APK 已确认交付 ${V}。"
 
       # 一眼看清全部分发点各自的成败。以前镜像失败会让 run 直接红掉、
       # 后面的跳过点只在折叠的日志里躺着，得点开才看得见。
@@ -382,6 +430,7 @@ jobs:
           GITHUB_REL: ${{ steps.github_release.outcome }}
           ATTACHMENT: ${{ steps.mirror_attachment.outcome }}
           MANIFEST: ${{ steps.mirror_manifest.outcome }}
+          MIRROR_VERIFIED: ${{ steps.mirror_manifest.outputs.verified }}
           LANDING: ${{ steps.landing_apk.outcome }}
           SITE_DEPLOY: ${{ steps.site_deploy.outcome }}
           LIVE: ${{ steps.live_endpoint.outcome }}
@@ -395,14 +444,20 @@ jobs:
             echo "| --- | --- |"
             echo "| GitHub Release | $(label "$GITHUB_REL") |"
             echo "| Gitee 镜像附件 | $(label "$ATTACHMENT") |"
-            echo "| Gitee 镜像清单 | $(label "$MANIFEST") |"
+            echo "| Gitee 更新清单（版本、地址、哈希） | $(label "$MANIFEST") |"
             echo "| 落地页安装包 | $(label "$LANDING") |"
             echo "| 站点点部署触发 | $(label "$SITE_DEPLOY") |"
-            echo "| **线上更新端点（用户实际读到的）** | $(label "$LIVE") |"
+            echo "| 官网清单与 APK | $(label "$LIVE") |"
             echo ""
-            echo "**只有「线上更新端点」是已同步，用户才真的能拿到 ${V}。**"
+            if [ "$MIRROR_VERIFIED" = "true" ]; then
+              echo "**Gitee 备用更新已确认交付 ${V}；官网状态单独查看。**"
+            else
+              echo "**Gitee 备用更新未确认交付 ${V}。流水线成功只代表 GitHub 正式发布，不代表镜像或官网已更新。**"
+            fi
             echo ""
-            echo "- 线上端点失败：线上清单仍是旧版本，国内用户检查更新会读到旧版本；GitHub 可达时仍可更新，只是慢。"
+            echo "- App 编译进包的更新地址：${APP_UPDATE_MANIFEST_URL}。"
+            echo "- Gitee 失败或跳过：检查 GITEE_TOKEN 的有效期、仓库权限和镜像步骤日志；旧清单不会因附件失败而被更新。"
+            echo "- 官网部署失败：不影响已验证的 Gitee 更新；Netlify 旧入口仍需恢复或告知旧用户手动覆盖安装。"
             echo "- 落地页安装包跳过：本次没有配 LANDING_TOKEN，站点靠落地页仓库每天 09:17 的兜底 workflow 同步。"
-            echo "- Gitee 镜像已停用（Netlify 承担国内源），两步固定为「跳过」。"
+            echo "- 已安装旧包不会自动更改更新源，需经旧源、GitHub 或手动覆盖安装进入新版本。"
           } >> "$GITHUB_STEP_SUMMARY"

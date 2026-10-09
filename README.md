@@ -1,3 +1,4 @@
+<!-- 项目说明与发布配置：App 更新使用 Gitee + GitHub，官网独立部署。 -->
 # 暨存 · 综测材料管理（Zongce）
 
 > 证书还在手上的时候存进来，需要填报的时候一键导出。
@@ -60,11 +61,13 @@
 
 到 [Releases](https://github.com/l0x0hhh/zongce/releases) 下载最新 `jicun-<版本>.apk`。首次安装需要在系统里允许"安装未知来源应用"。
 
-也可以直接从产品页下载：**https://jicun.netlify.app** —— 安装包由页面自己托管，点一下直接下 `.apk`，不跳转，也不会出现"下载下来变成 `.zip`"。
+也可从[产品页](https://jicun.netlify.app)下载，但官网部署与 App 发布独立；Netlify 额度暂停期间可能仍提供旧包，请核对安装版本。
 
 ### 国内网络
 
-GitHub 访问不稳定时，可以自建镜像：把 `latest.json` 放在镜像根目录，构建时通过 Gradle 属性 `updateManifestUrl` 写入 APK。应用会并发查询镜像与 GitHub Release、取版本更高者——镜像的价值在于国内更快的下载源，而不是唯一权威。
+备用源使用 [Gitee 发行版](https://gitee.com/l0x0hhh/Jicun/releases)，固定清单是 `https://gitee.com/l0x0hhh/Jicun/raw/master/latest.json`。2026-10-09 接入验证时清单仍是 `1.5.0`，仅证明旧包匿名可下载；新版本上传和真机验收完成前不能称为已同步。
+
+之后通过发布流程构建的 APK 会把 Gitee 清单地址写入 `BuildConfig.UPDATE_MANIFEST_URL`。App 并发查询镜像与 GitHub Release、取版本更高者，版本相同时优先镜像。旧包不会自动更改地址，需通过原更新源、GitHub 或手动覆盖安装过渡，见[接入与验收说明](docs/operations/update-mirror.md)。
 
 ```json
 {
@@ -122,17 +125,20 @@ docs/adr/                  # 架构决策记录
 - **CI**（`.github/workflows/ci.yml`）：推 `main` 或提 PR 时跑 `./gradlew test` + `:app:assembleDebug`，push 时上传 debug APK 产物（保留 14 天）。
 - **发布**（`.github/workflows/release.yml`）：推 `v*.*.*` 标签或手动触发，解出签名密钥 → 跑测试 → 构建签名 Release APK → 重命名为 `jicun-<版本>.apk` → 创建 GitHub Release（`versionCode = 1000000 + 构建号`）。
 - **签名 Secrets**：`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。密钥只放 GitHub Actions Secrets，不提交仓库（`*.keystore` 已在 `.gitignore` 中）。
-- **国内镜像（可选）**：再配 1 个 Secret `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects`）和 2 个 Variables `GITEE_OWNER` / `GITEE_REPO`，发版时会额外把 APK 传到 Gitee Release、并把 `latest.json` 更新到镜像仓库的 raw 固定路径。**三项缺任一项，镜像整段自动跳过**，GitHub 侧的发布不受影响。镜像仓库需先有分支（网页上建一个文件即可）。
+- **Gitee 备用更新（可选）**：配置 Secret `GITEE_TOKEN`，确认令牌有镜像仓库 API、上传附件和 Git 写权限。Variables `GITEE_OWNER` / `GITEE_REPO` 默认是 `l0x0hhh` / `Jicun`；若已有值须核对。仓库需公开且已有分支。
+  - `APP_UPDATE_MANIFEST_URL` 默认 `https://gitee.com/l0x0hhh/Jicun/raw/master/latest.json`，同时决定编译进 APK 的地址与清单回读地址。它必须与仓库实际分支对应。
+  - 先上传版本化 APK，再匿名下载并比较 SHA-256，成功后才更新清单；已有附件不删除、不覆盖。清单保留完整说明及 `sha256`、`size`，但当前 App 不使用这两个字段校验下载，完整性验证由发布流程执行。
+  - 缺令牌时跳过镜像，上传或回读失败时独立警告，GitHub 正式发布不受影响；后续清单步骤检查真实 `outcome`，不会把可忽略的上传失败当成功。
 - **同步到产品页（可选）**：配 1 个 Secret `LANDING_TOKEN`（对落地页仓库 `l0x0hhh/JICUN` 有 `contents:write` 的令牌；仓库名可用 Variable `LANDING_REPO` 覆盖），发版时会把 APK 覆盖到落地页的 `public/downloads/jicun.apk`，Netlify 随之重新部署。**没配就跳过**，落地页仓库自己有个每天拉取最新包的兜底 workflow。
 
 - **触发站点点部署（可选，强烈建议配）**：配 1 个 Secret `SITE_DEPLOY_HOOK`。它就是托管方提供的"POST 一下重新构建"的地址 —— Netlify 在 Site configuration → Build & deploy → Build hooks，Cloudflare Pages 在 Settings → Builds & deployments → Deploy hooks，Vercel 在 Settings → Git → Deploy Hooks。**本仓库不绑定任何一家**，换托管只改这个 Secret。推完落地页仓库后会主动 POST 一次，**站点即使没接 Git 自动部署，也能把线上更新过来**。
   - 为什么需要：仓库里有新文件 ≠ 用户读得到新文件。**v1.5.5 发布后落地页仓库里是 1.5.5，线上却一直是 1.5.2，持续五天，而流水线全绿** —— "推成功了"和"用户拿到了"之间没有任何人校验。
-- **线上端点校验（自动，必过）**：发版最后一步回读 `LIVE_MANIFEST_URL`（默认 `https://jicun.netlify.app/downloads/latest.json`）与 `LIVE_APK_URL`，要求**线上清单版本 = 本次版本**且**线上 APK 字节数 = 本地刚构建的 APK**，最多等 180 秒，对不上就让整个 run 变红。`Content-Type` 不对只给 warning（App 用 `HttpURLConnection`，不看 Content-Type；但浏览器会把清单当成文件下载）。
-  - 地址可用 Variables `LIVE_MANIFEST_URL` / `LIVE_APK_URL` 覆盖，二者与编译进包的 `-PupdateManifestUrl` **同源**，不会各写一份。
-  - **这一步红了怎么查**：先去站点的 Deploys 面板，看这次推送对应的那条 Production 部署是成功、失败、还是 **Skipped**。Skipped 表示部署根本没跑 —— 常见于托管方额度/计费用尽（2026-10-08 就是这个原因：站点停在最后一次成功部署上，而流水线全绿）。此时改配置、加 build hook 都没用，得先恢复额度或换托管。
-- **要换托管 / 迁移镜像**：⚠️ 动手前先读 [docs/operations/update-mirror.md](docs/operations/update-mirror.md) —— 镜像地址是**编译进 APK** 的，换地址只对新构建的包生效；**顺序错了会把最需要镜像的那批用户永久留在旧版**。
+- **官网校验（独立、可选）**：同步到官网仓库后，回读 `LIVE_MANIFEST_URL`（默认 `https://jicun.netlify.app/downloads/latest.json`）与 `LIVE_APK_URL`（默认 `https://jicun.netlify.app/downloads/jicun.apk`），精确校验清单版本、下载地址与 APK SHA-256。失败会在摘要标明，**不阻断已验证的 Gitee 更新与 GitHub 发布**。
+  - `LIVE_*` 仅供官网使用，**不要改成 Gitee 地址**。App 使用单独的 `APP_UPDATE_MANIFEST_URL`。
+  - 官网未更新时检查 Deploys 面板，区分成功、失败和 Skipped。额度暂停时 build hook 也不能恢复生产部署。
+- **迁移与旧用户过渡**：镜像地址编译进 APK，新地址只对新包生效。Netlify 尚未恢复时，GitHub 可达的旧用户仍能通过原备用源升级；其他旧用户需从已验证的 Gitee 新版链接手动覆盖安装。保留正式签名，不卸载，不丢本地材料。详见 [docs/operations/update-mirror.md](docs/operations/update-mirror.md)。
 
-  > ⚠️ **"跳过"是静默的**：流水线整体仍显示 `success`、正式包照常发出，只有产品页会停在旧包。跳过 `LANDING_TOKEN` 时不会做端点校验，只能靠落地页仓库的每日兜底。**发版后请直接看 run summary 那张表：只有「线上更新端点」是"已同步"，用户才真的能更新。**
+  > **发版后看分发摘要，而非只看整体绿灯**：GitHub Release、Gitee APK、Gitee 清单、官网同步和官网校验分别报告状态。只有 Gitee 附件与清单都通过，才可以宣布备用源已交付；跳过 `LANDING_TOKEN` 仅影响官网，不影响 Gitee。
   >
   > **怎么建令牌**（推荐 fine-grained，最小权限）：GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token；
   > Repository access 选 **Only select repositories**，只勾 `l0x0hhh/JICUN`；
@@ -155,12 +161,12 @@ docs/adr/                  # 架构决策记录
    ```
 3. ★ **打标签发版**：`git tag v1.2.2 && git push origin v1.2.2`（或在 Actions 里手动触发 Release 并填版本号）。流水线解签名密钥 → 跑测试 → 构建签名包 → 建 GitHub Release。
 4. **发布说明**（自动）：从 `VERSION_HISTORY.md` 里 `## v<版本>` 那一段生成 GitHub Release 说明；找不到条目会 warning 并退化成一句通用文案。
-5. **产品页同步**（自动，需 `LANDING_TOKEN`）：把 APK 与 `latest.json` 覆盖到落地页仓库的 `public/downloads/`；配了 `SITE_DEPLOY_HOOK` 还会主动踢一次构建。Gitee 镜像已停用（是否恢复见 [docs/operations/update-mirror.md](docs/operations/update-mirror.md)）。
-6. **线上端点校验**（自动，必过）：回读线上清单与线上 APK，确认用户端真的已经是本版本，否则 run 变红。
+5. **Gitee 备用更新**（自动，需 `GITEE_TOKEN`）：上传版本化 APK → 匿名下载校验 SHA-256 → 发布清单 → 精确回读清单。失败时保留可用旧附件，GitHub 正式发布仍可完成。
+6. **产品页同步与校验**（自动、可选，需 `LANDING_TOKEN`）：同步官网 APK 与清单；可用 `SITE_DEPLOY_HOOK` 触发部署，并验证官网清单与 APK。状态独立于 Gitee 更新源。
 
 > 只有第 2、3 步需要人工，其余全自动。
 >
-> ⚠️ **"发版成功"的定义是第 6 步绿**，而不是第 3 步发出去。第 5 步被跳过（没配 `LANDING_TOKEN`）时第 6 步也不会跑 —— 这时产品页与国内镜像靠落地页仓库每天的兜底 workflow，最多滞后一天。
+> **交付状态分开判断**：第 3 步成功表示 GitHub 正式发布，第 5 步全部验证通过表示 Gitee 备用源已交付，第 6 步成功表示官网已更新。每日兜底不能绕过托管平台暂停部署，不保证官网最多滞后一天。
 
 ## 已知未完成
 
