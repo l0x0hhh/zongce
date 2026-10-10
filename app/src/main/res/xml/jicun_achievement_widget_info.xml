@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
+  补齐 PNG 预览，兼容只读取 previewImage 的「原子组件」选择器。
   桌面小组件之二（我的成果）的系统登记信息。
 
   规格：4×4 格（250×250dp），最小可缩到 4×3（250×180dp），横向/纵向均可拉伸。
@@ -13,7 +14,8 @@
   initialLayout 指向 Glance 自带的占位布局：真实内容由 AchievementWidget 渲染进去，
   首帧先出这个占位（T01 实测：模拟器冷启动首绑出现过一次 ANR，占位布局能挡住空窗）。
 
-  previewLayout 使用静态布局还原真实组件，避免系统选择器回退显示应用 logo。
+  previewLayout 与 previewImage 同时提供：支持布局预览的桌面使用 XML，其他桌面使用
+  tools/gen_widget_previews.py 生成的 PNG，避免回退到应用 logo。预览内容为示例。
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
@@ -21,6 +23,7 @@
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minHeight="180dp"
     android:minWidth="250dp"
+    android:previewImage="@drawable/widget_preview_achievement_img"
     android:previewLayout="@layout/widget_preview_achievement"
     android:resizeMode="horizontal|vertical"
     android:targetCellHeight="4"

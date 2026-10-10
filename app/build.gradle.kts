@@ -1,4 +1,4 @@
-// Android 构建配置：v1.5.6 发布学年选择与点击刷新修复，正式签名和版本码由 CI 注入。
+// Android 构建配置：v1.5.7 同步系统选择器组件预览，正式签名和版本码由 CI 注入。
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,8 +15,8 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.gradleProperty("releaseVersionCode").orElse("2").get().toInt()
-        // v1.5.6：组件内直接选择学年，实时读取实例状态并携带学年打开成果页。
-        versionName = providers.gradleProperty("versionName").orElse("1.5.6").get()
+        // v1.5.7：修复快速录入旧预览，并补齐成果组件的 PNG 预览。
+        versionName = providers.gradleProperty("versionName").orElse("1.5.7").get()
     }
 
     // 本地没有签名参数时仍可构建 release；CI 通过 GitHub Secrets 注入正式签名。
